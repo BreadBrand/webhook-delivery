@@ -11,4 +11,5 @@ services:
       PORT: "8080"
       DB_PATH: /app/data/webhooks.db
       WORKER_COUNT: "10"
+      SIMULATE: "true"
     restart: unless-stopped

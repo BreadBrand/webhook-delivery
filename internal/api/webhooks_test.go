@@ -1,10 +1,13 @@
 package api_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/b2randon/webhook-delivery/internal/models"
 )
 
 func TestCreateWebhook_ValidURL(t *testing.T) {
@@ -144,5 +147,44 @@ func TestHealthNoAuth(t *testing.T) {
 	w := do(t, router, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200", w.Code)
+	}
+}
+
+func TestDeleteWebhook_AbortsDeliveries(t *testing.T) {
+	router, stores := testServer(t)
+	wh := seedWebhook(t, router, "https://abort.example.com")
+
+	// Ingest an event — this creates a pending delivery for wh.
+	do(t, router, authReq(t, http.MethodPost, "/events", validEventBody()))
+
+	ctx := context.Background()
+	deliveries, err := stores.Deliveries.List(ctx, 10)
+	if err != nil {
+		t.Fatalf("List deliveries: %v", err)
+	}
+	if len(deliveries) == 0 {
+		t.Fatal("expected a pending delivery to be created after event ingestion")
+	}
+	d := deliveries[0]
+	if d.Status != models.DeliveryPending {
+		t.Fatalf("pre-delete status = %q, want pending", d.Status)
+	}
+
+	// Delete the webhook — this should abort all pending deliveries.
+	w := do(t, router, authReq(t, http.MethodDelete, "/webhooks/"+wh.ID, ""))
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("DELETE /webhooks: status = %d, want 204; body = %s", w.Code, w.Body)
+	}
+
+	// Delivery rows must be preserved for audit (FR1.10) and must be failed (FR1.9).
+	updated, err := stores.Deliveries.List(ctx, 10)
+	if err != nil {
+		t.Fatalf("List deliveries after delete: %v", err)
+	}
+	if len(updated) == 0 {
+		t.Fatal("delivery row must be preserved after webhook deletion (audit log)")
+	}
+	if updated[0].Status != models.DeliveryFailed {
+		t.Errorf("delivery status after delete = %q, want failed", updated[0].Status)
 	}
 }

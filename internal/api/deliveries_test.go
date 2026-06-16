@@ -80,3 +80,50 @@ func TestRedeliver_NotFound(t *testing.T) {
 		t.Errorf("status = %d, want 404", w.Code)
 	}
 }
+
+func TestRedeliver_DuplicateReturns409WithExistingID(t *testing.T) {
+	router, stores := testServer(t)
+	seedWebhook(t, router, "https://recv.example.com")
+	do(t, router, authReq(t, http.MethodPost, "/events", validEventBody()))
+
+	ctx := context.Background()
+	deliveries, _ := stores.Deliveries.List(ctx, 1)
+	if len(deliveries) == 0 {
+		t.Fatal("no delivery created")
+	}
+	d := deliveries[0]
+
+	// Mark the original delivery as failed so redeliver is allowed (FR5.1).
+	stores.Deliveries.MarkInFlight(ctx, d.ID)
+	errMsg := "forced"
+	stores.Deliveries.MarkFailed(ctx, d.ID, 5, nil, nil, &errMsg, nil)
+
+	// First redeliver — must succeed with 202 and return a new delivery ID.
+	w := do(t, router, authReq(t, http.MethodPost, "/deliveries/"+d.ID+"/redeliver", ""))
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("first redeliver: status = %d, want 202; body = %s", w.Code, w.Body)
+	}
+	var first models.Delivery
+	if err := json.Unmarshal(w.Body.Bytes(), &first); err != nil {
+		t.Fatalf("decode first redeliver: %v", err)
+	}
+	if first.ID == "" || first.ID == d.ID {
+		t.Fatalf("first redeliver ID = %q, want a new non-empty id", first.ID)
+	}
+
+	// Second redeliver — must return 409 with the first re-delivery's ID in the body.
+	w = do(t, router, authReq(t, http.MethodPost, "/deliveries/"+d.ID+"/redeliver", ""))
+	if w.Code != http.StatusConflict {
+		t.Fatalf("second redeliver: status = %d, want 409; body = %s", w.Code, w.Body)
+	}
+	var conflict struct {
+		Error        string `json:"error"`
+		RedeliveryID string `json:"redelivery_id"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &conflict); err != nil {
+		t.Fatalf("decode 409 body: %v", err)
+	}
+	if conflict.RedeliveryID != first.ID {
+		t.Errorf("redelivery_id = %q, want %q (the first re-delivery)", conflict.RedeliveryID, first.ID)
+	}
+}

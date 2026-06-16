@@ -5,3 +5,5 @@ web/dist/*
 !web/dist/index.html
 !web/dist/assets/
 *.db
+/server
+/simulate
