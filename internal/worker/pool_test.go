@@ -290,3 +290,39 @@ func TestProcessLogsDeliveryAttempt(t *testing.T) {
 		t.Errorf("expected event_id %q in log output, got: %s", ev.ID, log)
 	}
 }
+
+func TestProcessWithRecovery_PanicRequeues(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	encKey := make([]byte, 32)
+	s := mustStores(t)
+	wh := mustWebhook(t, s, srv.URL, []byte("secret"), encKey, 5)
+	ev := mustEvent(t, s)
+	s.Deliveries.CreateBatch(context.Background(), ev.ID, []models.Webhook{*wh})
+
+	list, _ := s.Deliveries.List(context.Background(), 1)
+	d := list[0]
+	s.Deliveries.MarkInFlight(context.Background(), d.ID)
+
+	// Build a pool with a nil httpClient so executeDelivery panics on Do(req).
+	pool := &Pool{
+		stores:     s,
+		encKey:     encKey,
+		httpClient: nil, // nil client → panic inside executeDelivery
+	}
+	pool.processWithRecovery(context.Background(), d)
+
+	updated, err := s.Deliveries.Get(context.Background(), d.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if updated.Status != models.DeliveryPending {
+		t.Errorf("after panic: status = %q, want pending", updated.Status)
+	}
+	if updated.NextAttemptAt == nil {
+		t.Error("after panic: next_attempt_at should be set for re-queue")
+	}
+}

@@ -112,7 +112,7 @@ func (p *Pool) runWorker(ctx context.Context) {
 			if !claimed {
 				continue // another worker claimed it first
 			}
-			p.process(ctx, d)
+			p.processWithRecovery(ctx, d)
 		}
 	}
 }
@@ -183,6 +183,26 @@ func (p *Pool) process(ctx context.Context, d models.Delivery) {
 	}
 	p.publishDelivery(ctx, d.ID)
 	p.publishWebhook(ctx, d.WebhookID)
+}
+
+// processWithRecovery calls process and, if it panics, re-queues the delivery
+// as pending with a 10-second delay so it is not stuck in_flight.
+func (p *Pool) processWithRecovery(ctx context.Context, d models.Delivery) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("worker panicked during delivery",
+				"delivery_id", d.ID,
+				"event_id", d.EventID,
+				"recover", r,
+				"stack", string(debug.Stack()),
+			)
+			nextAt := time.Now().Add(10 * time.Second)
+			if err := p.stores.Deliveries.MarkFailed(ctx, d.ID, d.Attempt, nil, nil, nil, &nextAt); err != nil {
+				slog.Error("re-queue after panic failed", "delivery_id", d.ID, "err", err)
+			}
+		}
+	}()
+	p.process(ctx, d)
 }
 
 func (p *Pool) runProbe(ctx context.Context) {
