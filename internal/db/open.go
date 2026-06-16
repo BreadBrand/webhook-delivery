@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -25,6 +26,9 @@ func Open(path string) (*sql.DB, error) {
 	if err := runSchema(db); err != nil {
 		db.Close()
 		return nil, err
+	}
+	if err := os.Chmod(path, 0600); err != nil {
+		slog.Warn("set db file permissions", "err", err, "path", path)
 	}
 	return db, nil
 }
