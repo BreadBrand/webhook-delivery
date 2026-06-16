@@ -2,22 +2,29 @@ package main
 
 import (
 	"context"
+	"flag"
 	stdfs "io/fs"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/b2randon/webhook-delivery/internal/api"
+	"github.com/b2randon/webhook-delivery/internal/browser"
 	"github.com/b2randon/webhook-delivery/internal/config"
 	"github.com/b2randon/webhook-delivery/internal/db"
+	"github.com/b2randon/webhook-delivery/internal/simulate"
 	"github.com/b2randon/webhook-delivery/internal/sse"
 	"github.com/b2randon/webhook-delivery/internal/worker"
 	"github.com/b2randon/webhook-delivery/web"
 )
 
 func main() {
+	runSimulate := flag.Bool("simulate", false, "start simulator inline (no separate terminal needed)")
+	flag.Parse()
+
 	cfg, err := config.Load("data/secrets.json")
 	if err != nil {
 		slog.Error("load config", "err", err)
@@ -59,6 +66,27 @@ func main() {
 		<-ctx.Done()
 		_ = srv.Shutdown(context.Background())
 	}()
+
+	if *runSimulate {
+		baseURL := "http://localhost:" + cfg.Port
+		// Both goroutines sleep 500ms so the server socket is bound before use.
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			browser.Open(baseURL)
+		}()
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			if err := simulate.Run(ctx, simulate.Config{
+				Receivers:   5,
+				FailureRate: 0.3,
+				EventRate:   2.0,
+				ServerURL:   baseURL,
+				APIKey:      cfg.APIKey,
+			}); err != nil && ctx.Err() == nil {
+				slog.Error("simulator failed", "err", err)
+			}
+		}()
+	}
 
 	slog.Info("server listening", "addr", srv.Addr)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

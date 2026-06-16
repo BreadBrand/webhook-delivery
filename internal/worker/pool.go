@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
@@ -32,7 +33,7 @@ func NewPool(stores *db.Stores, encKey []byte, workerN int) *Pool {
 		encKey:        encKey,
 		workerN:       workerN,
 		httpClient:    &http.Client{Timeout: 10 * time.Second},
-		pollInterval:  time.Second,
+		pollInterval:  500 * time.Millisecond,
 		probeInterval: 30 * time.Second,
 	}
 }
@@ -112,13 +113,31 @@ func (p *Pool) runWorker(ctx context.Context) {
 			if !claimed {
 				continue // another worker claimed it first
 			}
-			p.process(ctx, d)
+			p.processWithRecovery(ctx, d)
 		}
 	}
 }
 
 func (p *Pool) process(ctx context.Context, d models.Delivery) {
 	result := executeDelivery(ctx, d, p.stores, p.encKey, p.httpClient)
+
+	// NFR5.1: structured log on every delivery attempt.
+	logAttrs := []any{
+		"event_id", d.EventID,
+		"webhook_id", d.WebhookID,
+		"attempt", d.Attempt + 1,
+		"latency_ms", result.ResponseMs,
+	}
+	if result.StatusCode > 0 {
+		logAttrs = append(logAttrs, "http_status", result.StatusCode)
+	}
+	if result.Err != nil {
+		logAttrs = append(logAttrs, "error", *result.Err)
+		slog.Warn("delivery attempt failed", logAttrs...)
+	} else {
+		slog.Info("delivery attempt", logAttrs...)
+	}
+
 	newAttempt := d.Attempt + 1
 
 	if result.Success {
@@ -165,6 +184,27 @@ func (p *Pool) process(ctx context.Context, d models.Delivery) {
 	}
 	p.publishDelivery(ctx, d.ID)
 	p.publishWebhook(ctx, d.WebhookID)
+}
+
+// processWithRecovery calls process and, if it panics, re-queues the delivery
+// as pending with a 10-second delay so it is not stuck in_flight.
+func (p *Pool) processWithRecovery(ctx context.Context, d models.Delivery) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("worker panicked during delivery",
+				"delivery_id", d.ID,
+				"event_id", d.EventID,
+				"recover", r,
+				"stack", string(debug.Stack()),
+			)
+			nextAt := time.Now().Add(10 * time.Second)
+			errMsg := fmt.Sprintf("panic: %v", r)
+			if err := p.stores.Deliveries.MarkFailed(ctx, d.ID, d.Attempt+1, nil, nil, &errMsg, &nextAt); err != nil {
+				slog.Error("re-queue after panic failed", "delivery_id", d.ID, "err", err)
+			}
+		}
+	}()
+	p.process(ctx, d)
 }
 
 func (p *Pool) runProbe(ctx context.Context) {
