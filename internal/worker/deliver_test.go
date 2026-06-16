@@ -59,16 +59,18 @@ func testClient() *http.Client {
 
 func TestExecuteDeliverySuccess(t *testing.T) {
 	var (
-		gotBody []byte
-		gotSig  string
-		gotCT   string
-		gotDID  string
+		gotBody    []byte
+		gotSig     string
+		gotCT      string
+		gotEventID string
+		gotAttempt string
 	)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotBody, _ = io.ReadAll(r.Body)
 		gotSig = r.Header.Get("X-Webhook-Signature")
 		gotCT = r.Header.Get("Content-Type")
-		gotDID = r.Header.Get("X-Delivery-Id")
+		gotEventID = r.Header.Get("X-Webhook-Event-ID")
+		gotAttempt = r.Header.Get("X-Webhook-Delivery-Attempt")
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
@@ -98,8 +100,11 @@ func TestExecuteDeliverySuccess(t *testing.T) {
 	if gotCT != "application/json" {
 		t.Errorf("Content-Type = %q, want application/json", gotCT)
 	}
-	if gotDID != d.ID {
-		t.Errorf("X-Delivery-Id = %q, want %q", gotDID, d.ID)
+	if gotEventID != ev.ID {
+		t.Errorf("X-Webhook-Event-ID = %q, want %q", gotEventID, ev.ID)
+	}
+	if gotAttempt != "1" {
+		t.Errorf("X-Webhook-Delivery-Attempt = %q, want 1", gotAttempt)
 	}
 	wantSig := crypto.Sign(gotBody, secret)
 	if gotSig != wantSig {

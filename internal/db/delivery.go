@@ -262,6 +262,13 @@ func (s *DeliveryStore) MarkProbeInFlight(ctx context.Context, id string) (bool,
 	return n > 0, err
 }
 
+func (s *DeliveryStore) CountPending(ctx context.Context) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM deliveries WHERE status = 'pending'`).Scan(&n)
+	return n, err
+}
+
 func scanDelivery(row rowScanner) (*models.Delivery, error) {
 	var d models.Delivery
 	var parentID, nextAt, lastErr sql.NullString

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/b2randon/webhook-delivery/internal/db"
 	"github.com/b2randon/webhook-delivery/internal/models"
 )
 
@@ -87,6 +88,22 @@ func TestEventList(t *testing.T) {
 	}
 	if len(list) != 3 {
 		t.Errorf("List len = %d, want 3", len(list))
+	}
+}
+
+func TestEventCreateDuplicate(t *testing.T) {
+	s := mustOpenDB(t)
+	ctx := context.Background()
+	ev := &models.Event{
+		ID: "dup-1", Type: "t", Source: "s",
+		Time: time.Now().UTC(), Data: json.RawMessage(`{}`),
+	}
+	if err := s.Events.Create(ctx, ev); err != nil {
+		t.Fatalf("first Create: %v", err)
+	}
+	err := s.Events.Create(ctx, ev)
+	if !errors.Is(err, db.ErrConflict) {
+		t.Errorf("second Create error = %v, want db.ErrConflict", err)
 	}
 }
 

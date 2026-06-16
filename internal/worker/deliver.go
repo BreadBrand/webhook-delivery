@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/b2randon/webhook-delivery/internal/crypto"
@@ -65,7 +66,8 @@ func executeDelivery(ctx context.Context, d models.Delivery, stores *db.Stores, 
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Webhook-Signature", sig)
-	req.Header.Set("X-Delivery-Id", d.ID)
+	req.Header.Set("X-Webhook-Event-ID", ev.ID)
+	req.Header.Set("X-Webhook-Delivery-Attempt", strconv.Itoa(d.Attempt+1))
 
 	start := time.Now()
 	resp, err := client.Do(req)

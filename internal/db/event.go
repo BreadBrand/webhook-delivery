@@ -3,11 +3,16 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/b2randon/webhook-delivery/internal/models"
 )
+
+// ErrConflict is returned when an INSERT violates a UNIQUE constraint.
+var ErrConflict = errors.New("conflict")
 
 type EventStore struct{ db *sql.DB }
 
@@ -20,6 +25,9 @@ func (s *EventStore) Create(ctx context.Context, e *models.Event) error {
 		string(e.Data),
 	)
 	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			return ErrConflict
+		}
 		return fmt.Errorf("insert event: %w", err)
 	}
 	return nil
