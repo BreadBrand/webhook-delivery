@@ -1,10 +1,13 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -252,5 +255,38 @@ func TestCheckProbesFailedProbeResetsTimer(t *testing.T) {
 	finalList, _ := s.Deliveries.List(ctx, 10)
 	if len(finalList) > 0 && finalList[0].Status != models.DeliveryHeld {
 		t.Errorf("delivery status = %q after failed probe, want held", finalList[0].Status)
+	}
+}
+
+func TestProcessLogsDeliveryAttempt(t *testing.T) {
+	var buf bytes.Buffer
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	defer slog.SetDefault(old)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	encKey := make([]byte, 32)
+	s := mustStores(t)
+	wh := mustWebhook(t, s, srv.URL, []byte("secret"), encKey, 5)
+	ev := mustEvent(t, s)
+	s.Deliveries.CreateBatch(context.Background(), ev.ID, []models.Webhook{*wh})
+
+	list, _ := s.Deliveries.List(context.Background(), 1)
+	d := list[0]
+	s.Deliveries.MarkInFlight(context.Background(), d.ID)
+
+	pool := NewPool(s, encKey, 1)
+	pool.process(context.Background(), d)
+
+	log := buf.String()
+	if !strings.Contains(log, "delivery attempt") {
+		t.Errorf("expected 'delivery attempt' in log output, got: %s", log)
+	}
+	if !strings.Contains(log, ev.ID) {
+		t.Errorf("expected event_id %q in log output, got: %s", ev.ID, log)
 	}
 }

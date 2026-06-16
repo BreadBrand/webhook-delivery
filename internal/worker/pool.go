@@ -32,7 +32,7 @@ func NewPool(stores *db.Stores, encKey []byte, workerN int) *Pool {
 		encKey:        encKey,
 		workerN:       workerN,
 		httpClient:    &http.Client{Timeout: 10 * time.Second},
-		pollInterval:  time.Second,
+		pollInterval:  500 * time.Millisecond,
 		probeInterval: 30 * time.Second,
 	}
 }
@@ -119,6 +119,24 @@ func (p *Pool) runWorker(ctx context.Context) {
 
 func (p *Pool) process(ctx context.Context, d models.Delivery) {
 	result := executeDelivery(ctx, d, p.stores, p.encKey, p.httpClient)
+
+	// NFR5.1: structured log on every delivery attempt.
+	logAttrs := []any{
+		"event_id", d.EventID,
+		"webhook_id", d.WebhookID,
+		"attempt", d.Attempt + 1,
+		"latency_ms", result.ResponseMs,
+	}
+	if result.StatusCode > 0 {
+		logAttrs = append(logAttrs, "http_status", result.StatusCode)
+	}
+	if result.Err != nil {
+		logAttrs = append(logAttrs, "error", *result.Err)
+		slog.Info("delivery attempt failed", logAttrs...)
+	} else {
+		slog.Info("delivery attempt", logAttrs...)
+	}
+
 	newAttempt := d.Attempt + 1
 
 	if result.Success {
