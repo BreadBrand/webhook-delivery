@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
@@ -16,6 +17,8 @@ type Stores struct {
 }
 
 func (s *Stores) Close() error { return s.db.Close() }
+
+func (s *Stores) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
 
 // OpenStores opens (or creates) the SQLite database and returns all stores.
 // Use path ":memory:" in tests.
