@@ -35,13 +35,13 @@ function computeStats(webhookId: string, deliveries: Delivery[]): Stats {
 const statusColor: Record<string, string> = {
   active: '#22c55e',
   degraded: '#f59e0b',
-  circuit_open: '#ef4444',
+  circuit_open: '#e55353',
   deleted: '#6b7280',
 }
 
 export function EndpointHealth({ webhooks, deliveries }: Props) {
   if (webhooks.length === 0) {
-    return <p style={{ color: '#94a3b8' }}>No webhooks registered yet.</p>
+    return <p style={{ color: '#9c9c9c', fontSize: 13 }}>No webhooks registered yet.</p>
   }
 
   return (
@@ -52,7 +52,8 @@ export function EndpointHealth({ webhooks, deliveries }: Props) {
           <div
             key={wh.id}
             style={{
-              background: '#1e293b',
+              background: '#182945',
+              border: '1px solid #2c456d',
               borderRadius: 8,
               padding: '12px 16px',
               fontSize: 13,
@@ -60,7 +61,7 @@ export function EndpointHealth({ webhooks, deliveries }: Props) {
           >
             <div
               style={{
-                color: '#38bdf8',
+                color: '#00b6ff',
                 fontSize: 12,
                 fontFamily: 'monospace',
                 marginBottom: 8,
@@ -83,7 +84,7 @@ export function EndpointHealth({ webhooks, deliveries }: Props) {
               />
             </div>
             {lastDeliveryAt && (
-              <div style={{ color: '#475569', fontSize: 11, marginTop: 8 }}>
+              <div style={{ color: '#44505a', fontSize: 11, marginTop: 8 }}>
                 Last delivery: {new Date(lastDeliveryAt).toLocaleString()}
               </div>
             )}
@@ -105,8 +106,8 @@ function Stat({
 }) {
   return (
     <div>
-      <div style={{ color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>{label}</div>
-      <div style={{ color: color ?? '#e2e8f0', fontWeight: 600 }}>{value}</div>
+      <div style={{ color: '#44505a', fontSize: 10, textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ color: color ?? '#fafafa', fontWeight: 600 }}>{value}</div>
     </div>
   )
 }

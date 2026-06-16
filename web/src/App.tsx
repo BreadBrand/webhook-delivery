@@ -50,8 +50,26 @@ export default function App() {
 
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto', padding: '24px 16px' }}>
-      <header style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#f8fafc' }}>
+      <header style={{ marginBottom: 32, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div
+          style={{
+            width: 8,
+            height: 32,
+            borderRadius: 4,
+            background: 'linear-gradient(180deg, #6601e8 0%, #ac00d7 50%, #ff00b8 100%)',
+            flexShrink: 0,
+          }}
+        />
+        <h1
+          style={{
+            fontSize: 22,
+            fontWeight: 700,
+            background: 'linear-gradient(90deg, #6601e8, #ac00d7, #ff00b8)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+          }}
+        >
           Webhook Delivery Dashboard
         </h1>
       </header>
@@ -65,30 +83,30 @@ export default function App() {
           />
         </Panel>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-          <Panel title="Recent Events">
-            <EventFeed events={events} />
-          </Panel>
-          <Panel title="Event Volume">
-            <VolumeChart
-              data={volumeData}
-              window={volumeWindow}
-              onWindowChange={handleWindowChange}
-            />
-          </Panel>
-        </div>
-
         <Panel title="Endpoint Health">
           <EndpointHealth webhooks={webhooks} deliveries={deliveries} />
         </Panel>
 
-        <Panel title="Delivery Log">
-          <DeliveryLog
-            deliveries={deliveries}
-            apiKey={apiKey}
-            onRedeliver={handleRedeliver}
+        <Panel title="Event Volume">
+          <VolumeChart
+            data={volumeData}
+            window={volumeWindow}
+            onWindowChange={handleWindowChange}
           />
         </Panel>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+          <Panel title="Recent Events">
+            <EventFeed events={events} />
+          </Panel>
+          <Panel title="Delivery Log">
+            <DeliveryLog
+              deliveries={deliveries}
+              apiKey={apiKey}
+              onRedeliver={handleRedeliver}
+            />
+          </Panel>
+        </div>
       </div>
     </div>
   )
@@ -98,13 +116,22 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
   return (
     <section
       style={{
-        background: '#0f172a',
-        border: '1px solid #1e293b',
+        background: '#0d1635',
+        border: '1px solid #2c456d',
         borderRadius: 10,
         padding: 20,
       }}
     >
-      <h2 style={{ fontSize: 14, fontWeight: 600, color: '#94a3b8', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      <h2
+        style={{
+          fontSize: 12,
+          fontWeight: 600,
+          color: '#9c9c9c',
+          marginBottom: 16,
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+        }}
+      >
         {title}
       </h2>
       {children}
