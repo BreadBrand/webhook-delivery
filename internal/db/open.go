@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -30,7 +31,8 @@ func Open(path string) (*sql.DB, error) {
 
 // testDB opens an in-memory SQLite instance. Only called from _test.go files.
 func testDB() (*sql.DB, error) {
-	db, err := sql.Open("sqlite", "file::memory:?mode=memory&cache=shared&_pragma=foreign_keys(ON)")
+	uri := fmt.Sprintf("file:testdb_%d?mode=memory&cache=shared&_pragma=foreign_keys(ON)", time.Now().UnixNano())
+	db, err := sql.Open("sqlite", uri)
 	if err != nil {
 		return nil, err
 	}
