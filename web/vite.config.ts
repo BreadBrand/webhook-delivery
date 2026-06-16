@@ -6,6 +6,15 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('/react') || id.includes('/react-dom')) return 'vendor'
+          if (id.includes('/recharts')) return 'charts'
+          if (id.includes('/@tanstack') || id.includes('/zustand')) return 'query'
+        },
+      },
+    },
   },
   server: {
     proxy: {
