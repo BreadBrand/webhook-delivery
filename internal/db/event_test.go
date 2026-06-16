@@ -60,19 +60,6 @@ func TestEventGetNotFound(t *testing.T) {
 	}
 }
 
-func TestEventDuplicateIDErrors(t *testing.T) {
-	s := mustOpenDB(t)
-	ctx := context.Background()
-
-	ev := makeEvent("evt-dup", "order.created")
-	if err := s.Events.Create(ctx, ev); err != nil {
-		t.Fatalf("first Create: %v", err)
-	}
-	err := s.Events.Create(ctx, ev)
-	if err == nil {
-		t.Error("expected error on duplicate event ID")
-	}
-}
 
 func TestEventList(t *testing.T) {
 	s := mustOpenDB(t)

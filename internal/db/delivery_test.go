@@ -489,3 +489,30 @@ func TestMarkProbeInFlight(t *testing.T) {
 		t.Errorf("status = %q, want in_flight", got.Status)
 	}
 }
+
+func TestDeliveryCountPending(t *testing.T) {
+	s := mustOpenDB(t)
+	ctx := context.Background()
+	wh, ev := seedWebhookAndEvent(t, s)
+
+	// No deliveries yet — count must be zero.
+	n, err := s.Deliveries.CountPending(ctx)
+	if err != nil {
+		t.Fatalf("CountPending: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("CountPending = %d, want 0", n)
+	}
+
+	// Create a batch (one pending delivery) and recount.
+	if err := s.Deliveries.CreateBatch(ctx, ev.ID, []models.Webhook{wh}); err != nil {
+		t.Fatalf("CreateBatch: %v", err)
+	}
+	n, err = s.Deliveries.CountPending(ctx)
+	if err != nil {
+		t.Fatalf("CountPending after batch: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("CountPending = %d, want 1", n)
+	}
+}
