@@ -32,6 +32,10 @@ CREATE TABLE IF NOT EXISTS deliveries (
     last_response_ms   INTEGER,
     last_error         TEXT,
     created_at         DATETIME NOT NULL DEFAULT (datetime('now')),
-    updated_at         DATETIME NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(event_id, webhook_id) WHERE parent_delivery_id IS NULL
+    updated_at         DATETIME NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Partial unique index: only one root delivery (no parent) per event+webhook pair.
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_deliveries_root
+    ON deliveries(event_id, webhook_id)
+    WHERE parent_delivery_id IS NULL;
