@@ -6,28 +6,45 @@ A self-contained webhook delivery system with circuit breaker, retry scheduling,
 
 ## Running it
 
-### Option 1 — Build and run locally (Go 1.23 + Node 22 required)
+### Option 1 — Pre-built binary (no Go or Node required)
+
+Download `webhook-delivery-release.zip` from the [latest release](https://github.com/BreadBrand/webhook-delivery/releases).
+
+| Platform | File to run |
+|---|---|
+| **macOS (Apple Silicon, 2020+)** | Double-click `open-macos-arm64.command` |
+| **macOS (Intel)** | Double-click `open-macos-amd64.command` |
+| **Windows** | Double-click `webhook-server-windows-amd64.exe` |
+| **Linux** | `./run-linux.sh` |
+
+The server starts, opens **http://localhost:8080** in your browser, and begins generating live traffic automatically. The dashboard populates within seconds.
+
+> **macOS — "cannot be opened because the developer cannot be verified":** Right-click the `.command` file → **Open**, then click **Open** again. One-time only.
+>
+> **Windows — SmartScreen:** Click **More info** → **Run anyway**. One-time only.
+
+### Option 2 — Build from source (Go 1.23 + Node 22)
 
 ```bash
-make build          # builds React app, then Go binary → bin/webhook-server
-./bin/webhook-server
+make build
+./bin/webhook-server --simulate   # opens browser + starts simulator automatically
 ```
-
-Open **http://localhost:8080** — the dashboard loads automatically.
 
 On first run the server writes `data/secrets.json` (API key + AES encryption key). This file persists across restarts; delete it to reset credentials.
 
-> **macOS:** If you downloaded a pre-built binary, Gatekeeper will block it with *"cannot be opened because the developer cannot be verified."* Right-click the file → **Open**, then click **Open** again. One-time only.
->
-> **Windows:** SmartScreen may show *"Windows protected your PC."* Click **More info** → **Run anyway**. Same one-time bypass.
-
-### Option 2 — Docker (no Go or Node required)
+### Option 3 — Docker (no Go or Node required)
 
 ```bash
 docker compose up --build
 ```
 
 Open **http://localhost:8080**. The container generates secrets automatically. Data persists in `./data/` via the volume mount.
+
+Start the simulator in a second terminal:
+
+```bash
+docker compose exec server simulate --server http://localhost:8080 --secrets /app/data/secrets.json
+```
 
 ---
 
