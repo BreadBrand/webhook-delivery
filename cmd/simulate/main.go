@@ -32,11 +32,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	simulate.Run(ctx, simulate.Config{
+	if err := simulate.Run(ctx, simulate.Config{
 		Receivers:   *nReceivers,
 		FailureRate: *failureRate,
 		EventRate:   *eventRate,
 		ServerURL:   *serverURL,
 		APIKey:      cfg.APIKey,
-	})
+	}); err != nil {
+		log.Fatalf("simulator: %v", err)
+	}
 }

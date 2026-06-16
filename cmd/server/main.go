@@ -68,20 +68,25 @@ func main() {
 	}()
 
 	if *runSimulate {
-		go simulate.Run(ctx, simulate.Config{
-			Receivers:   5,
-			FailureRate: 0.3,
-			EventRate:   2.0,
-			ServerURL:   "http://localhost:" + cfg.Port,
-			APIKey:      cfg.APIKey,
-		})
+		baseURL := "http://localhost:" + cfg.Port
+		// Both goroutines sleep 500ms so the server socket is bound before use.
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			browser.Open(baseURL)
+		}()
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			if err := simulate.Run(ctx, simulate.Config{
+				Receivers:   5,
+				FailureRate: 0.3,
+				EventRate:   2.0,
+				ServerURL:   baseURL,
+				APIKey:      cfg.APIKey,
+			}); err != nil && ctx.Err() == nil {
+				slog.Error("simulator failed", "err", err)
+			}
+		}()
 	}
-
-	go func() {
-		// Brief delay so the listener is ready before the browser opens.
-		time.Sleep(300 * time.Millisecond)
-		browser.Open("http://localhost:" + cfg.Port)
-	}()
 
 	slog.Info("server listening", "addr", srv.Addr)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
@@ -132,7 +133,7 @@ func (p *Pool) process(ctx context.Context, d models.Delivery) {
 	}
 	if result.Err != nil {
 		logAttrs = append(logAttrs, "error", *result.Err)
-		slog.Info("delivery attempt failed", logAttrs...)
+		slog.Warn("delivery attempt failed", logAttrs...)
 	} else {
 		slog.Info("delivery attempt", logAttrs...)
 	}
@@ -197,7 +198,8 @@ func (p *Pool) processWithRecovery(ctx context.Context, d models.Delivery) {
 				"stack", string(debug.Stack()),
 			)
 			nextAt := time.Now().Add(10 * time.Second)
-			if err := p.stores.Deliveries.MarkFailed(ctx, d.ID, d.Attempt, nil, nil, nil, &nextAt); err != nil {
+			errMsg := fmt.Sprintf("panic: %v", r)
+			if err := p.stores.Deliveries.MarkFailed(ctx, d.ID, d.Attempt+1, nil, nil, &errMsg, &nextAt); err != nil {
 				slog.Error("re-queue after panic failed", "delivery_id", d.ID, "err", err)
 			}
 		}

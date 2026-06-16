@@ -28,7 +28,12 @@ var eventTypes = []string{
 }
 
 // Run registers N mock receiver webhooks and fires CloudEvents until ctx is cancelled.
-func Run(ctx context.Context, cfg Config) {
+// Returns an error if cfg.EventRate is non-positive or if no receivers could be registered.
+func Run(ctx context.Context, cfg Config) error {
+	if cfg.EventRate <= 0 {
+		return fmt.Errorf("EventRate must be positive, got %g", cfg.EventRate)
+	}
+
 	nFail := int(float64(cfg.Receivers) * cfg.FailureRate)
 
 	type entry struct {
@@ -56,8 +61,7 @@ func Run(ctx context.Context, cfg Config) {
 	}
 
 	if len(entries) == 0 {
-		slog.Error("simulator: no receivers registered — is the server running?")
-		return
+		return fmt.Errorf("no receivers registered — is the server running?")
 	}
 
 	interval := time.Duration(float64(time.Second) / cfg.EventRate)
@@ -74,7 +78,7 @@ func Run(ctx context.Context, cfg Config) {
 				e.srv.Close()
 			}
 			slog.Info("simulator: done")
-			return
+			return nil
 		case <-ticker.C:
 			evType := eventTypes[seq%len(eventTypes)]
 			id := fmt.Sprintf("sim-%d-%d", time.Now().UnixNano(), seq)
@@ -140,7 +144,9 @@ func registerWebhook(ctx context.Context, baseURL, apiKey, url string) (string, 
 }
 
 func deleteWebhook(baseURL, apiKey, id string) {
-	req, err := http.NewRequest(http.MethodDelete, baseURL+"/webhooks/"+id, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, baseURL+"/webhooks/"+id, nil)
 	if err != nil {
 		slog.Error("simulator: build delete request", "id", id, "err", err)
 		return
