@@ -1,6 +1,5 @@
 data/
 dist/webhook-delivery-*
 web/dist/*
-!web/dist/.gitkeep
 !web/dist/placeholder
 *.db
