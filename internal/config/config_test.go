@@ -77,6 +77,30 @@ func TestLoadRejectsEmptyAPIKey(t *testing.T) {
 	}
 }
 
+func TestSimulateEnvVar(t *testing.T) {
+	t.Setenv("SIMULATE", "true")
+	dir := t.TempDir()
+	cfg, err := config.Load(filepath.Join(dir, "s.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Simulate {
+		t.Error("Simulate = false, want true when SIMULATE=true")
+	}
+}
+
+func TestLogFormatEnvVar(t *testing.T) {
+	t.Setenv("LOG_FORMAT", "json")
+	dir := t.TempDir()
+	cfg, err := config.Load(filepath.Join(dir, "s.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.LogFormat != "json" {
+		t.Errorf("LogFormat = %q, want json", cfg.LogFormat)
+	}
+}
+
 func TestDefaultValues(t *testing.T) {
 	t.Setenv("PORT", "")
 	t.Setenv("WORKER_COUNT", "")

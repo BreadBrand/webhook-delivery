@@ -22,7 +22,7 @@ import (
 )
 
 func main() {
-	runSimulate := flag.Bool("simulate", false, "start simulator inline (no separate terminal needed)")
+	runSimulateFlag := flag.Bool("simulate", false, "start simulator inline (no separate terminal needed)")
 	flag.Parse()
 
 	cfg, err := config.Load("data/secrets.json")
@@ -30,6 +30,12 @@ func main() {
 		slog.Error("load config", "err", err)
 		os.Exit(1)
 	}
+
+	if cfg.LogFormat == "json" {
+		slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	}
+
+	runSimulate := *runSimulateFlag || cfg.Simulate
 
 	stores, err := db.OpenStores(cfg.DBPath)
 	if err != nil {
@@ -67,7 +73,7 @@ func main() {
 		_ = srv.Shutdown(context.Background())
 	}()
 
-	if *runSimulate {
+	if runSimulate {
 		baseURL := "http://localhost:" + cfg.Port
 		// Both goroutines sleep 500ms so the server socket is bound before use.
 		go func() {
