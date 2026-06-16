@@ -223,14 +223,14 @@ func TestDeliveryFlushHeld(t *testing.T) {
 		s.Deliveries.CreateBatch(ctx, ev.ID, []models.Webhook{wh})
 	}
 
-	// Flush should move only 10 to pending.
+	// Flush should move all 15 to pending (no limit).
 	if err := s.Deliveries.FlushHeld(ctx, wh.ID); err != nil {
 		t.Fatalf("FlushHeld: %v", err)
 	}
 
 	pending, _ := s.Deliveries.ClaimPending(ctx, time.Now().Add(time.Minute), 20)
-	if len(pending) != 10 {
-		t.Errorf("after FlushHeld: %d pending, want 10", len(pending))
+	if len(pending) != 15 {
+		t.Errorf("after FlushHeld: %d pending, want 15", len(pending))
 	}
 }
 
@@ -386,5 +386,106 @@ func TestDeliveryMarkHeld(t *testing.T) {
 	d, _ := s.Deliveries.Get(ctx, id)
 	if d.Status != models.DeliveryHeld {
 		t.Errorf("status = %q, want held", d.Status)
+	}
+}
+
+func TestHoldPendingForWebhook(t *testing.T) {
+	s := mustOpenDB(t)
+	ctx := context.Background()
+
+	wh1, ev1 := seedWebhookAndEvent(t, s)
+
+	wh2, err := s.Webhooks.Create(ctx, "https://other.com/hook", "enc", "hint", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev2 := &models.Event{
+		ID: "evt-hold2", Type: "t", Source: "s",
+		Time: time.Now().UTC(), Data: json.RawMessage(`{}`),
+	}
+	if err := s.Events.Create(ctx, ev2); err != nil {
+		t.Fatal(err)
+	}
+
+	// One batch creates one delivery for wh1 AND one for wh2
+	if err := s.Deliveries.CreateBatch(ctx, ev1.ID, []models.Webhook{wh1, *wh2}); err != nil {
+		t.Fatalf("CreateBatch: %v", err)
+	}
+
+	// Second event for wh1 only
+	ev3 := &models.Event{
+		ID: "evt-hold3", Type: "t", Source: "s",
+		Time: time.Now().UTC(), Data: json.RawMessage(`{}`),
+	}
+	if err := s.Events.Create(ctx, ev3); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Deliveries.CreateBatch(ctx, ev3.ID, []models.Webhook{wh1}); err != nil {
+		t.Fatalf("CreateBatch2: %v", err)
+	}
+
+	if err := s.Deliveries.HoldPendingForWebhook(ctx, wh1.ID); err != nil {
+		t.Fatalf("HoldPendingForWebhook: %v", err)
+	}
+
+	all, err := s.Deliveries.List(ctx, 20)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	for _, d := range all {
+		if d.WebhookID == wh1.ID && d.Status != models.DeliveryHeld {
+			t.Errorf("wh1 delivery %s: status = %q, want held", d.ID, d.Status)
+		}
+		if d.WebhookID == wh2.ID && d.Status != models.DeliveryPending {
+			t.Errorf("wh2 delivery %s: status = %q, want pending (unaffected)", d.ID, d.Status)
+		}
+	}
+}
+
+func TestMarkProbeInFlight(t *testing.T) {
+	s := mustOpenDB(t)
+	ctx := context.Background()
+	wh, ev := seedWebhookAndEvent(t, s)
+
+	if err := s.Deliveries.CreateBatch(ctx, ev.ID, []models.Webhook{wh}); err != nil {
+		t.Fatal(err)
+	}
+
+	list, _ := s.Deliveries.List(ctx, 1)
+	id := list[0].ID
+
+	// Must not claim a pending delivery (requires held)
+	claimed, err := s.Deliveries.MarkProbeInFlight(ctx, id)
+	if err != nil {
+		t.Fatalf("MarkProbeInFlight on pending: %v", err)
+	}
+	if claimed {
+		t.Error("should not claim a pending delivery (need held)")
+	}
+
+	if err := s.Deliveries.MarkHeld(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+
+	claimed, err = s.Deliveries.MarkProbeInFlight(ctx, id)
+	if err != nil {
+		t.Fatalf("MarkProbeInFlight on held: %v", err)
+	}
+	if !claimed {
+		t.Error("expected claim from held delivery")
+	}
+
+	// Double-claim must return false
+	claimed, err = s.Deliveries.MarkProbeInFlight(ctx, id)
+	if err != nil {
+		t.Fatalf("MarkProbeInFlight second call: %v", err)
+	}
+	if claimed {
+		t.Error("double-claim must return false")
+	}
+
+	got, _ := s.Deliveries.Get(ctx, id)
+	if got.Status != models.DeliveryInFlight {
+		t.Errorf("status = %q, want in_flight", got.Status)
 	}
 }

@@ -31,7 +31,7 @@ func Open(path string) (*sql.DB, error) {
 
 // testDB opens an in-memory SQLite instance. Only called from _test.go files.
 func testDB() (*sql.DB, error) {
-	uri := fmt.Sprintf("file:testdb_%d?mode=memory&cache=shared&_pragma=foreign_keys(ON)", time.Now().UnixNano())
+	uri := fmt.Sprintf("file:testdb_%d?mode=memory&cache=shared&_pragma=foreign_keys(ON)&_pragma=busy_timeout(5000)", time.Now().UnixNano())
 	db, err := sql.Open("sqlite", uri)
 	if err != nil {
 		return nil, err

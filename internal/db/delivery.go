@@ -160,7 +160,7 @@ func (s *DeliveryStore) MarkHeld(ctx context.Context, id string) error {
 	return err
 }
 
-// FlushHeld moves up to 10 held deliveries for a webhook to pending (oldest first).
+// FlushHeld moves all held deliveries for a webhook to pending (oldest first).
 func (s *DeliveryStore) FlushHeld(ctx context.Context, webhookID string) error {
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
 	_, err := s.db.ExecContext(ctx, `
@@ -168,7 +168,7 @@ func (s *DeliveryStore) FlushHeld(ctx context.Context, webhookID string) error {
 		WHERE id IN (
 			SELECT id FROM deliveries
 			WHERE webhook_id = ? AND status = 'held'
-			ORDER BY created_at ASC LIMIT 10
+			ORDER BY created_at ASC
 		)`, now, webhookID)
 	return err
 }
@@ -240,6 +240,26 @@ func (s *DeliveryStore) HasActiveRedelivery(ctx context.Context, eventID, webhoo
 		return nil, err
 	}
 	return s.Get(ctx, id)
+}
+
+func (s *DeliveryStore) HoldPendingForWebhook(ctx context.Context, webhookID string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE deliveries SET status = 'held', updated_at = datetime('now')
+		WHERE webhook_id = ? AND status = 'pending'`, webhookID)
+	return err
+}
+
+// MarkProbeInFlight atomically transitions a held delivery to in_flight (for circuit probe).
+// Returns false if the delivery is not in held state (CAS — checks RowsAffected).
+func (s *DeliveryStore) MarkProbeInFlight(ctx context.Context, id string) (bool, error) {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE deliveries SET status = 'in_flight', updated_at = datetime('now')
+		WHERE id = ? AND status = 'held'`, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := result.RowsAffected()
+	return n > 0, err
 }
 
 func scanDelivery(row rowScanner) (*models.Delivery, error) {
