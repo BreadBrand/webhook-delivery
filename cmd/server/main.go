@@ -25,14 +25,14 @@ func main() {
 	runSimulateFlag := flag.Bool("simulate", false, "start simulator inline (no separate terminal needed)")
 	flag.Parse()
 
+	if os.Getenv("LOG_FORMAT") == "json" {
+		slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	}
+
 	cfg, err := config.Load("data/secrets.json")
 	if err != nil {
 		slog.Error("load config", "err", err)
 		os.Exit(1)
-	}
-
-	if cfg.LogFormat == "json" {
-		slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 	}
 
 	runSimulate := *runSimulateFlag || cfg.Simulate

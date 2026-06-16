@@ -2,6 +2,7 @@ package simulate_test
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -58,6 +59,11 @@ func TestRunAgainstLiveServer(t *testing.T) {
 }
 
 func TestRunReturnsErrorOnUnreachableServer(t *testing.T) {
+	// Use a closed server's URL to guarantee connection refused without relying on a fixed port.
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closedURL := closed.URL
+	closed.Close()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -65,7 +71,7 @@ func TestRunReturnsErrorOnUnreachableServer(t *testing.T) {
 		Receivers:   1,
 		FailureRate: 0,
 		EventRate:   1.0,
-		ServerURL:   "http://127.0.0.1:19999",
+		ServerURL:   closedURL,
 		APIKey:      "any",
 	})
 	if err == nil {
