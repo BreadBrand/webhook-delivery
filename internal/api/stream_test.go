@@ -21,7 +21,7 @@ func TestStreamSSE(t *testing.T) {
 	encKey := make([]byte, 32)
 	b := sse.NewBroadcaster()
 	h := api.NewHandler(stores, encKey, b)
-	router := api.NewRouter(h, testAPIKey)
+	router := api.NewRouter(h, testAPIKey, nil)
 
 	srv := httptest.NewServer(router)
 	defer srv.Close()

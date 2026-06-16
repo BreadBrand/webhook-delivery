@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	stdfs "io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"github.com/b2randon/webhook-delivery/internal/db"
 	"github.com/b2randon/webhook-delivery/internal/sse"
 	"github.com/b2randon/webhook-delivery/internal/worker"
+	"github.com/b2randon/webhook-delivery/web"
 )
 
 func main() {
@@ -41,7 +43,12 @@ func main() {
 
 	h := api.NewHandler(stores, cfg.EncryptionKey, broadcaster)
 	h.SetWorkerCount(cfg.WorkerCount)
-	router := api.NewRouter(h, cfg.APIKey)
+	webSub, err := stdfs.Sub(web.FS, "dist")
+	if err != nil {
+		slog.Error("web FS", "err", err)
+		os.Exit(1)
+	}
+	router := api.NewRouter(h, cfg.APIKey, http.FS(webSub))
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,

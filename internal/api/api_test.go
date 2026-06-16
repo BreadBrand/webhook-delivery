@@ -26,7 +26,7 @@ func testServer(t *testing.T) (http.Handler, *db.Stores) {
 	encKey := make([]byte, 32)
 	b := sse.NewBroadcaster()
 	h := api.NewHandler(stores, encKey, b)
-	return api.NewRouter(h, testAPIKey), stores
+	return api.NewRouter(h, testAPIKey, nil), stores
 }
 
 func authReq(t *testing.T, method, path, body string) *http.Request {

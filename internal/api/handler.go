@@ -30,11 +30,12 @@ func NewHandler(stores *db.Stores, encKey []byte, broadcaster *sse.Broadcaster) 
 
 func (h *Handler) SetWorkerCount(n int) { h.workerCount = n }
 
-func NewRouter(h *Handler, apiKey string) http.Handler {
+func NewRouter(h *Handler, apiKey string, staticFS http.FileSystem) http.Handler {
 	r := chi.NewRouter()
 	r.Use(chimw.Recoverer)
 
 	r.Get("/health", h.Health)
+	r.Get("/config", configHandler(apiKey))
 
 	r.Group(func(r chi.Router) {
 		r.Use(authMiddleware(apiKey))
@@ -53,6 +54,10 @@ func NewRouter(h *Handler, apiKey string) http.Handler {
 
 		r.Get("/stream", h.Stream)
 	})
+
+	if staticFS != nil {
+		r.NotFound(http.FileServer(staticFS).ServeHTTP)
+	}
 
 	return r
 }
