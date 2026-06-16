@@ -1,0 +1,14 @@
+version: "3.9"
+
+services:
+  server:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      PORT: "8080"
+      DB_PATH: /app/data/webhooks.db
+      WORKER_COUNT: "10"
+    restart: unless-stopped
