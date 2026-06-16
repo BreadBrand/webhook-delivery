@@ -32,9 +32,9 @@ build-all: web
 release: build-all
 	chmod +x dist/webhook-server-linux-amd64 dist/webhook-server-linux-arm64 \
 	         dist/webhook-server-darwin-amd64 dist/webhook-server-darwin-arm64
-	@printf '#!/bin/bash\ncd "$$(dirname "$$0")"\n./webhook-server-darwin-arm64 --simulate\n' \
+	@printf '#!/bin/bash\ncd "$$(dirname "$$0")"\nxattr -d com.apple.quarantine ./webhook-server-darwin-arm64 2>/dev/null || true\n./webhook-server-darwin-arm64 --simulate\n' \
 		> dist/open-macos-arm64.command && chmod +x dist/open-macos-arm64.command
-	@printf '#!/bin/bash\ncd "$$(dirname "$$0")"\n./webhook-server-darwin-amd64 --simulate\n' \
+	@printf '#!/bin/bash\ncd "$$(dirname "$$0")"\nxattr -d com.apple.quarantine ./webhook-server-darwin-amd64 2>/dev/null || true\n./webhook-server-darwin-amd64 --simulate\n' \
 		> dist/open-macos-amd64.command && chmod +x dist/open-macos-amd64.command
 	@printf '#!/bin/bash\ncd "$$(dirname "$$0")"\n./webhook-server-linux-amd64 --simulate\n' \
 		> dist/run-linux.sh && chmod +x dist/run-linux.sh
