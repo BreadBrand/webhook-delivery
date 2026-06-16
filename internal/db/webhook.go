@@ -41,7 +41,7 @@ func (s *WebhookStore) List(ctx context.Context) ([]models.Webhook, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []models.Webhook
+	out := make([]models.Webhook, 0)
 	for rows.Next() {
 		w, err := scanWebhook(rows)
 		if err != nil {

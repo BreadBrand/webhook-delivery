@@ -97,6 +97,10 @@ func TestWebhookRecordFailure(t *testing.T) {
 	if streak != 3 || status != models.StatusCircuitOpen {
 		t.Errorf("after 3 failures (threshold=3): streak=%d status=%q", streak, status)
 	}
+	w, _ := s.Webhooks.Get(ctx, wh.ID)
+	if w.NextProbeAt == nil {
+		t.Error("NextProbeAt must be set when circuit trips")
+	}
 }
 
 func TestWebhookRecordSuccess(t *testing.T) {
@@ -136,5 +140,24 @@ func TestWebhookCloseCircuit(t *testing.T) {
 	got, _ = s.Webhooks.Get(ctx, wh.ID)
 	if got.Status != models.StatusActive || got.FailureStreak != 0 || got.NextProbeAt != nil {
 		t.Errorf("after CloseCircuit: status=%q streak=%d probe=%v", got.Status, got.FailureStreak, got.NextProbeAt)
+	}
+}
+
+func TestWebhookSetCircuitOpen(t *testing.T) {
+	s := mustOpenDB(t)
+	ctx := context.Background()
+
+	wh, _ := s.Webhooks.Create(ctx, "https://example.com", "enc", "hint", 5)
+
+	if err := s.Webhooks.SetCircuitOpen(ctx, wh.ID); err != nil {
+		t.Fatalf("SetCircuitOpen: %v", err)
+	}
+
+	got, _ := s.Webhooks.Get(ctx, wh.ID)
+	if got.Status != models.StatusCircuitOpen {
+		t.Errorf("Status = %q, want circuit_open", got.Status)
+	}
+	if got.NextProbeAt == nil {
+		t.Error("NextProbeAt must be set after SetCircuitOpen")
 	}
 }
