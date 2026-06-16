@@ -42,3 +42,19 @@ func testDB() (*sql.DB, error) {
 	}
 	return db, nil
 }
+
+// sqliteTimeFormats are the formats SQLite returns for datetime values.
+var sqliteTimeFormats = []string{
+	"2006-01-02 15:04:05",
+	"2006-01-02T15:04:05Z",
+	time.RFC3339,
+}
+
+func parseTime(s string) time.Time {
+	for _, layout := range sqliteTimeFormats {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.UTC()
+		}
+	}
+	return time.Time{}
+}

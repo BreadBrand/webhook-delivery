@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -127,10 +126,10 @@ func scanWebhook(row rowScanner) (*models.Webhook, error) {
 		return nil, err
 	}
 	if nextProbeAt.Valid {
-		t, _ := time.Parse(time.RFC3339, nextProbeAt.String)
+		t := parseTime(nextProbeAt.String)
 		w.NextProbeAt = &t
 	}
-	w.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
-	w.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+	w.CreatedAt = parseTime(createdAt)
+	w.UpdatedAt = parseTime(updatedAt)
 	return &w, nil
 }
