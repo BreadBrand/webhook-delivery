@@ -181,10 +181,14 @@ func TestListDueForProbe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Webhooks.SetCircuitOpen(ctx, wh2.ID)
+	if err := s.Webhooks.SetCircuitOpen(ctx, wh2.ID); err != nil {
+		t.Fatalf("SetCircuitOpen wh2: %v", err)
+	}
 
 	// wh3: active — must never appear
-	s.Webhooks.Create(ctx, "https://c.com", "enc", "hint", 5)
+	if _, err := s.Webhooks.Create(ctx, "https://c.com", "enc", "hint", 5); err != nil {
+		t.Fatalf("Create wh3: %v", err)
+	}
 
 	due, err := s.Webhooks.ListDueForProbe(ctx)
 	if err != nil {

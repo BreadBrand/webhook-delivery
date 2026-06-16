@@ -249,8 +249,8 @@ func (s *DeliveryStore) HoldPendingForWebhook(ctx context.Context, webhookID str
 	return err
 }
 
-// MarkProbeInFlight atomically claims a held delivery for probe. Returns false if the
-// delivery is not in held state (CAS — checks RowsAffected).
+// MarkProbeInFlight atomically transitions a held delivery to in_flight (for circuit probe).
+// Returns false if the delivery is not in held state (CAS — checks RowsAffected).
 func (s *DeliveryStore) MarkProbeInFlight(ctx context.Context, id string) (bool, error) {
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE deliveries SET status = 'in_flight', updated_at = datetime('now')

@@ -428,7 +428,10 @@ func TestHoldPendingForWebhook(t *testing.T) {
 		t.Fatalf("HoldPendingForWebhook: %v", err)
 	}
 
-	all, _ := s.Deliveries.List(ctx, 20)
+	all, err := s.Deliveries.List(ctx, 20)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
 	for _, d := range all {
 		if d.WebhookID == wh1.ID && d.Status != models.DeliveryHeld {
 			t.Errorf("wh1 delivery %s: status = %q, want held", d.ID, d.Status)
