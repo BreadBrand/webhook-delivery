@@ -2,22 +2,29 @@ package main
 
 import (
 	"context"
+	"flag"
 	stdfs "io/fs"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/b2randon/webhook-delivery/internal/api"
+	"github.com/b2randon/webhook-delivery/internal/browser"
 	"github.com/b2randon/webhook-delivery/internal/config"
 	"github.com/b2randon/webhook-delivery/internal/db"
+	"github.com/b2randon/webhook-delivery/internal/simulate"
 	"github.com/b2randon/webhook-delivery/internal/sse"
 	"github.com/b2randon/webhook-delivery/internal/worker"
 	"github.com/b2randon/webhook-delivery/web"
 )
 
 func main() {
+	runSimulate := flag.Bool("simulate", false, "start simulator inline (no separate terminal needed)")
+	flag.Parse()
+
 	cfg, err := config.Load("data/secrets.json")
 	if err != nil {
 		slog.Error("load config", "err", err)
@@ -58,6 +65,22 @@ func main() {
 	go func() {
 		<-ctx.Done()
 		_ = srv.Shutdown(context.Background())
+	}()
+
+	if *runSimulate {
+		go simulate.Run(ctx, simulate.Config{
+			Receivers:   5,
+			FailureRate: 0.3,
+			EventRate:   2.0,
+			ServerURL:   "http://localhost:" + cfg.Port,
+			APIKey:      cfg.APIKey,
+		})
+	}
+
+	go func() {
+		// Brief delay so the listener is ready before the browser opens.
+		time.Sleep(300 * time.Millisecond)
+		browser.Open("http://localhost:" + cfg.Port)
 	}()
 
 	slog.Info("server listening", "addr", srv.Addr)
