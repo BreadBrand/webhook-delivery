@@ -19,7 +19,7 @@ Download `webhook-delivery-release.zip` from the [latest release](https://github
 
 The server starts, opens **http://localhost:8080** in your browser, and begins generating live traffic automatically. The dashboard populates within seconds.
 
-> **macOS Apple Silicon — Gatekeeper blocks unsigned binaries with no GUI workaround on Ventura/Sonoma+.** The one-time Terminal command above removes the quarantine flag. To open Terminal in the right folder: right-click the unzipped folder in Finder → **New Terminal at Folder** (or drag the folder onto Terminal).
+> **macOS Apple Silicon — Gatekeeper blocks unsigned binaries with no GUI workaround on Ventura/Sonoma+.** To run: right-click the unzipped folder in Finder → **Services** → **New Terminal at Folder**, then paste the command above.
 >
 > **macOS Intel — "cannot be opened because the developer cannot be verified":** Right-click the `.command` file → **Open**, then click **Open** again. One-time only.
 >
