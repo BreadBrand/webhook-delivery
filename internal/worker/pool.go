@@ -56,6 +56,7 @@ func supervise(ctx context.Context, fn func()) {
 				defer func() {
 					if r := recover(); r != nil {
 						slog.Error("worker panicked", "recover", r, "stack", string(debug.Stack()))
+						time.Sleep(time.Second)
 					}
 				}()
 				fn()
@@ -115,6 +116,7 @@ func (p *Pool) process(ctx context.Context, d models.Delivery) {
 	_, newStatus, err := p.stores.Webhooks.RecordFailure(ctx, d.WebhookID)
 	if err != nil {
 		slog.Error("record failure", "webhook_id", d.WebhookID, "err", err)
+		return
 	}
 
 	if newStatus == models.StatusCircuitOpen {

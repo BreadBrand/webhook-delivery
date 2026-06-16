@@ -223,14 +223,14 @@ func TestDeliveryFlushHeld(t *testing.T) {
 		s.Deliveries.CreateBatch(ctx, ev.ID, []models.Webhook{wh})
 	}
 
-	// Flush should move only 10 to pending.
+	// Flush should move all 15 to pending (no limit).
 	if err := s.Deliveries.FlushHeld(ctx, wh.ID); err != nil {
 		t.Fatalf("FlushHeld: %v", err)
 	}
 
 	pending, _ := s.Deliveries.ClaimPending(ctx, time.Now().Add(time.Minute), 20)
-	if len(pending) != 10 {
-		t.Errorf("after FlushHeld: %d pending, want 10", len(pending))
+	if len(pending) != 15 {
+		t.Errorf("after FlushHeld: %d pending, want 15", len(pending))
 	}
 }
 
