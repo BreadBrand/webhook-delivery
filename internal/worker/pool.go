@@ -9,6 +9,7 @@ import (
 
 	"github.com/b2randon/webhook-delivery/internal/db"
 	"github.com/b2randon/webhook-delivery/internal/models"
+	"github.com/b2randon/webhook-delivery/internal/sse"
 )
 
 // Pool manages worker goroutines that deliver pending webhook payloads.
@@ -19,6 +20,7 @@ type Pool struct {
 	httpClient    *http.Client
 	pollInterval  time.Duration
 	probeInterval time.Duration
+	broadcaster   *sse.Broadcaster
 }
 
 // NewPool returns a Pool ready to Start. workerN goroutines poll for pending deliveries.
@@ -32,6 +34,9 @@ func NewPool(stores *db.Stores, encKey []byte, workerN int) *Pool {
 		probeInterval: 30 * time.Second,
 	}
 }
+
+// SetBroadcaster wires an SSE broadcaster for delivery_updated events. Optional.
+func (p *Pool) SetBroadcaster(b *sse.Broadcaster) { p.broadcaster = b }
 
 // Start resets orphaned in-flight deliveries, then launches worker and probe goroutines.
 // Returns immediately; goroutines run until ctx is cancelled.
@@ -110,6 +115,7 @@ func (p *Pool) process(ctx context.Context, d models.Delivery) {
 		if err := p.stores.Webhooks.RecordSuccess(ctx, d.WebhookID); err != nil {
 			slog.Error("record success", "webhook_id", d.WebhookID, "err", err)
 		}
+		p.publishDelivery(ctx, d.ID)
 		return
 	}
 
@@ -127,6 +133,8 @@ func (p *Pool) process(ctx context.Context, d models.Delivery) {
 		if err := p.stores.Deliveries.HoldPendingForWebhook(ctx, d.WebhookID); err != nil {
 			slog.Error("hold pending for webhook", "webhook_id", d.WebhookID, "err", err)
 		}
+		p.publishDelivery(ctx, d.ID)
+		p.publishWebhook(ctx, d.WebhookID)
 		return
 	}
 
@@ -142,6 +150,8 @@ func (p *Pool) process(ctx context.Context, d models.Delivery) {
 	if err := p.stores.Deliveries.MarkFailed(ctx, d.ID, newAttempt, sc, ms, result.Err, nextAt); err != nil {
 		slog.Error("mark failed", "id", d.ID, "err", err)
 	}
+	p.publishDelivery(ctx, d.ID)
+	p.publishWebhook(ctx, d.WebhookID)
 }
 
 func (p *Pool) runProbe(ctx context.Context) {
@@ -192,6 +202,26 @@ func (p *Pool) checkProbes(ctx context.Context) {
 				slog.Error("probe: reset timer", "webhook_id", wh.ID, "err", err)
 			}
 		}
+	}
+}
+
+func (p *Pool) publishDelivery(ctx context.Context, id string) {
+	if p.broadcaster == nil {
+		return
+	}
+	d, err := p.stores.Deliveries.Get(ctx, id)
+	if err == nil && d != nil {
+		p.broadcaster.Publish("delivery_updated", d)
+	}
+}
+
+func (p *Pool) publishWebhook(ctx context.Context, id string) {
+	if p.broadcaster == nil {
+		return
+	}
+	wh, err := p.stores.Webhooks.Get(ctx, id)
+	if err == nil && wh != nil {
+		p.broadcaster.Publish("webhook_updated", wh)
 	}
 }
 
