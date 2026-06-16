@@ -2,7 +2,9 @@ package db_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -36,6 +38,25 @@ func TestEventCreateAndGet(t *testing.T) {
 	if got.Type != "order.created" {
 		t.Errorf("Type = %q", got.Type)
 	}
+	if got.Source != ev.Source {
+		t.Errorf("Source = %q, want %q", got.Source, ev.Source)
+	}
+	if !got.Time.Equal(ev.Time) {
+		t.Errorf("Time = %v, want %v", got.Time, ev.Time)
+	}
+	if string(got.Data) != string(ev.Data) {
+		t.Errorf("Data = %q, want %q", got.Data, ev.Data)
+	}
+}
+
+func TestEventGetNotFound(t *testing.T) {
+	s := mustOpenDB(t)
+	ctx := context.Background()
+
+	_, err := s.Events.Get(ctx, "does-not-exist")
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("Get missing ID: got %v, want sql.ErrNoRows", err)
+	}
 }
 
 func TestEventDuplicateIDErrors(t *testing.T) {
@@ -43,7 +64,9 @@ func TestEventDuplicateIDErrors(t *testing.T) {
 	ctx := context.Background()
 
 	ev := makeEvent("evt-dup", "order.created")
-	s.Events.Create(ctx, ev)
+	if err := s.Events.Create(ctx, ev); err != nil {
+		t.Fatalf("first Create: %v", err)
+	}
 	err := s.Events.Create(ctx, ev)
 	if err == nil {
 		t.Error("expected error on duplicate event ID")
