@@ -5,10 +5,12 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"sync"
 	"time"
 
 	"github.com/b2randon/webhook-delivery/internal/db"
 	"github.com/b2randon/webhook-delivery/internal/models"
+	"github.com/b2randon/webhook-delivery/internal/sse"
 )
 
 // Pool manages worker goroutines that deliver pending webhook payloads.
@@ -19,6 +21,8 @@ type Pool struct {
 	httpClient    *http.Client
 	pollInterval  time.Duration
 	probeInterval time.Duration
+	broadcaster   *sse.Broadcaster
+	wg            sync.WaitGroup
 }
 
 // NewPool returns a Pool ready to Start. workerN goroutines poll for pending deliveries.
@@ -33,17 +37,31 @@ func NewPool(stores *db.Stores, encKey []byte, workerN int) *Pool {
 	}
 }
 
+// SetBroadcaster wires an SSE broadcaster for delivery_updated events. Optional.
+func (p *Pool) SetBroadcaster(b *sse.Broadcaster) { p.broadcaster = b }
+
 // Start resets orphaned in-flight deliveries, then launches worker and probe goroutines.
-// Returns immediately; goroutines run until ctx is cancelled.
+// Returns immediately; goroutines run until ctx is cancelled. Call Wait to block until they exit.
 func (p *Pool) Start(ctx context.Context) {
 	if err := p.stores.Deliveries.ResetInFlight(ctx); err != nil {
 		slog.Error("startup recovery failed", "err", err)
 	}
 	for range p.workerN {
-		go supervise(ctx, func() { p.runWorker(ctx) })
+		p.wg.Add(1)
+		go func() {
+			defer p.wg.Done()
+			supervise(ctx, func() { p.runWorker(ctx) })
+		}()
 	}
-	go supervise(ctx, func() { p.runProbe(ctx) })
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
+		supervise(ctx, func() { p.runProbe(ctx) })
+	}()
 }
+
+// Wait blocks until all worker and probe goroutines have exited.
+func (p *Pool) Wait() { p.wg.Wait() }
 
 // supervise runs fn in a loop, catching panics. Exits when ctx is cancelled or fn returns normally.
 func supervise(ctx context.Context, fn func()) {
@@ -110,13 +128,14 @@ func (p *Pool) process(ctx context.Context, d models.Delivery) {
 		if err := p.stores.Webhooks.RecordSuccess(ctx, d.WebhookID); err != nil {
 			slog.Error("record success", "webhook_id", d.WebhookID, "err", err)
 		}
+		p.publishDelivery(ctx, d.ID)
 		return
 	}
 
 	_, newStatus, err := p.stores.Webhooks.RecordFailure(ctx, d.WebhookID)
 	if err != nil {
 		slog.Error("record failure", "webhook_id", d.WebhookID, "err", err)
-		return
+		// Fall through to MarkFailed so the delivery doesn't stay in_flight.
 	}
 
 	if newStatus == models.StatusCircuitOpen {
@@ -127,6 +146,8 @@ func (p *Pool) process(ctx context.Context, d models.Delivery) {
 		if err := p.stores.Deliveries.HoldPendingForWebhook(ctx, d.WebhookID); err != nil {
 			slog.Error("hold pending for webhook", "webhook_id", d.WebhookID, "err", err)
 		}
+		p.publishDelivery(ctx, d.ID)
+		p.publishWebhook(ctx, d.WebhookID)
 		return
 	}
 
@@ -142,6 +163,8 @@ func (p *Pool) process(ctx context.Context, d models.Delivery) {
 	if err := p.stores.Deliveries.MarkFailed(ctx, d.ID, newAttempt, sc, ms, result.Err, nextAt); err != nil {
 		slog.Error("mark failed", "id", d.ID, "err", err)
 	}
+	p.publishDelivery(ctx, d.ID)
+	p.publishWebhook(ctx, d.WebhookID)
 }
 
 func (p *Pool) runProbe(ctx context.Context) {
@@ -192,6 +215,26 @@ func (p *Pool) checkProbes(ctx context.Context) {
 				slog.Error("probe: reset timer", "webhook_id", wh.ID, "err", err)
 			}
 		}
+	}
+}
+
+func (p *Pool) publishDelivery(ctx context.Context, id string) {
+	if p.broadcaster == nil {
+		return
+	}
+	d, err := p.stores.Deliveries.Get(ctx, id)
+	if err == nil && d != nil {
+		p.broadcaster.Publish("delivery_updated", d)
+	}
+}
+
+func (p *Pool) publishWebhook(ctx context.Context, id string) {
+	if p.broadcaster == nil {
+		return
+	}
+	wh, err := p.stores.Webhooks.Get(ctx, id)
+	if err == nil && wh != nil {
+		p.broadcaster.Publish("webhook_updated", wh)
 	}
 }
 
