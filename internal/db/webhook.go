@@ -109,6 +109,33 @@ func (s *WebhookStore) SetCircuitOpen(ctx context.Context, id string) error {
 	return err
 }
 
+func (s *WebhookStore) ListDueForProbe(ctx context.Context) ([]models.Webhook, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, url, encrypted_secret, secret_hint, status, failure_streak,
+		       circuit_threshold, next_probe_at, created_at, updated_at
+		FROM webhooks WHERE status = 'circuit_open' AND next_probe_at <= datetime('now')`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]models.Webhook, 0)
+	for rows.Next() {
+		w, err := scanWebhook(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *w)
+	}
+	return out, rows.Err()
+}
+
+func (s *WebhookStore) TriggerProbe(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE webhooks SET next_probe_at = datetime('now', '-1 second'), updated_at = datetime('now')
+		WHERE id = ? AND status = 'circuit_open'`, id)
+	return err
+}
+
 // rowScanner works for both *sql.Row and *sql.Rows.
 type rowScanner interface {
 	Scan(dest ...any) error

@@ -161,3 +161,76 @@ func TestWebhookSetCircuitOpen(t *testing.T) {
 		t.Error("NextProbeAt must be set after SetCircuitOpen")
 	}
 }
+
+func TestListDueForProbe(t *testing.T) {
+	s := mustOpenDB(t)
+	ctx := context.Background()
+
+	// wh1: circuit_open, probe due now (via TriggerProbe)
+	wh1, err := s.Webhooks.Create(ctx, "https://a.com", "enc", "hint", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Webhooks.SetCircuitOpen(ctx, wh1.ID)
+	if err := s.Webhooks.TriggerProbe(ctx, wh1.ID); err != nil {
+		t.Fatalf("TriggerProbe: %v", err)
+	}
+
+	// wh2: circuit_open but NOT due (SetCircuitOpen sets next_probe_at = now+5min)
+	wh2, err := s.Webhooks.Create(ctx, "https://b.com", "enc", "hint", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Webhooks.SetCircuitOpen(ctx, wh2.ID)
+
+	// wh3: active — must never appear
+	s.Webhooks.Create(ctx, "https://c.com", "enc", "hint", 5)
+
+	due, err := s.Webhooks.ListDueForProbe(ctx)
+	if err != nil {
+		t.Fatalf("ListDueForProbe: %v", err)
+	}
+	if len(due) != 1 {
+		t.Fatalf("got %d due for probe, want 1", len(due))
+	}
+	if due[0].ID != wh1.ID {
+		t.Errorf("due[0].ID = %q, want %q", due[0].ID, wh1.ID)
+	}
+}
+
+func TestTriggerProbe(t *testing.T) {
+	s := mustOpenDB(t)
+	ctx := context.Background()
+
+	wh, err := s.Webhooks.Create(ctx, "https://x.com", "enc", "hint", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Webhooks.SetCircuitOpen(ctx, wh.ID)
+
+	// Before TriggerProbe: not due (probe is +5 min in the future)
+	before, _ := s.Webhooks.ListDueForProbe(ctx)
+	for _, w := range before {
+		if w.ID == wh.ID {
+			t.Error("webhook should not be due before TriggerProbe")
+		}
+	}
+
+	if err := s.Webhooks.TriggerProbe(ctx, wh.ID); err != nil {
+		t.Fatalf("TriggerProbe: %v", err)
+	}
+
+	after, err := s.Webhooks.ListDueForProbe(ctx)
+	if err != nil {
+		t.Fatalf("ListDueForProbe: %v", err)
+	}
+	found := false
+	for _, w := range after {
+		if w.ID == wh.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("webhook not found in due-for-probe list after TriggerProbe")
+	}
+}
