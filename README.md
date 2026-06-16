@@ -38,7 +38,7 @@ On first run the server writes `data/secrets.json` (API key + AES encryption key
 docker compose up --build
 ```
 
-Open **http://localhost:8080**. The container generates secrets automatically on first run and persists them in `./data/secrets.json`. The simulator starts automatically — the dashboard populates with live data within seconds.
+Open **http://localhost:8080**. The container generates secrets automatically on first run and persists them in `./data/secrets.json`. The `./data/` directory (secrets and database) persists across restarts via the volume mount — delete the entire `./data/` folder to reset to a clean state. The simulator starts automatically — the dashboard populates with live data within seconds.
 
 ---
 

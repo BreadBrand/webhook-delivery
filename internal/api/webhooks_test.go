@@ -155,10 +155,7 @@ func TestDeleteWebhook_AbortsDeliveries(t *testing.T) {
 	wh := seedWebhook(t, router, "https://abort.example.com")
 
 	// Ingest an event — this creates a pending delivery for wh.
-	do(t, router, authReq(t, http.MethodPost, "/events", `{
-		"specversion":"1.0","id":"abort-ev-1","type":"test.abort",
-		"source":"https://test.local","time":"2026-01-01T00:00:00Z","data":{}
-	}`))
+	do(t, router, authReq(t, http.MethodPost, "/events", validEventBody()))
 
 	ctx := context.Background()
 	deliveries, err := stores.Deliveries.List(ctx, 10)
