@@ -69,7 +69,13 @@ func (h *Handler) IngestEvent(w http.ResponseWriter, r *http.Request) {
 		Time:   input.Time.UTC(),
 		Data:   input.Data,
 	}
-	if err := h.stores.Events.Create(ctx, ev); err != nil {
+
+	webhooks, err := h.stores.Webhooks.List(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if err := h.stores.CreateEventWithDeliveries(ctx, ev, webhooks); err != nil {
 		if errors.Is(err, db.ErrConflict) {
 			existing, _ := h.stores.Events.Get(ctx, input.ID)
 			writeJSON(w, http.StatusConflict, existing)
@@ -77,18 +83,6 @@ func (h *Handler) IngestEvent(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
-	}
-
-	webhooks, err := h.stores.Webhooks.List(ctx)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	if len(webhooks) > 0 {
-		if err := h.stores.Deliveries.CreateBatch(ctx, ev.ID, webhooks); err != nil {
-			writeError(w, http.StatusInternalServerError, "internal error")
-			return
-		}
 	}
 
 	h.broadcaster.Publish("event_ingested", ev)

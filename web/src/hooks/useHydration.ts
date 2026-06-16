@@ -31,25 +31,25 @@ export function useHydration() {
   }, [config, apiKey, setApiKey])
 
   const { data: webhooks } = useQuery({
-    queryKey: ['webhooks'],
+    queryKey: ['webhooks', apiKey],
     queryFn: () => fetchWebhooks(apiKey),
     enabled: !!apiKey,
   })
 
   const { data: events } = useQuery({
-    queryKey: ['events'],
+    queryKey: ['events', apiKey],
     queryFn: () => fetchEvents(apiKey),
     enabled: !!apiKey,
   })
 
   const { data: deliveries } = useQuery({
-    queryKey: ['deliveries'],
+    queryKey: ['deliveries', apiKey],
     queryFn: () => fetchDeliveries(apiKey),
     enabled: !!apiKey,
   })
 
   const { data: volumeData } = useQuery({
-    queryKey: ['volume', volumeWindow],
+    queryKey: ['volume', volumeWindow, apiKey],
     queryFn: () => fetchVolume(apiKey, volumeWindow),
     enabled: !!apiKey,
   })

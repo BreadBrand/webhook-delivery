@@ -42,6 +42,6 @@ export function redeliver(apiKey: string, deliveryId: string): Promise<Delivery>
 export function setCircuit(apiKey: string, webhookId: string, open: boolean): Promise<Webhook> {
   return apiFetch(`/webhooks/${webhookId}/circuit`, apiKey, {
     method: 'POST',
-    body: JSON.stringify({ open }),
+    body: JSON.stringify({ action: open ? 'open' : 'close' }),
   })
 }

@@ -1,98 +1,195 @@
-# Webhook Delivery Service
+# Droplet Webhook Delivery Service
 
-A self-contained webhook delivery system with circuit breaker, retry scheduling, SSE-driven live dashboard, and a simulation tool for generating realistic traffic.
+A self-contained webhook delivery system with circuit breaker, retry scheduling, SSE-driven live dashboard, and a simulation tool for generating realistic traffic. Ships as a single binary — no Node, no external database.
 
-## Quick start (Docker)
+---
+
+## Running it
+
+### Option 1 — Build and run locally (Go 1.23 + Node 22 required)
+
+```bash
+make build          # builds React app, then Go binary → bin/webhook-server
+./bin/webhook-server
+```
+
+Open **http://localhost:8080** — the dashboard loads automatically.
+
+On first run the server writes `data/secrets.json` (API key + AES encryption key). This file persists across restarts; delete it to reset credentials.
+
+> **macOS:** If you downloaded a pre-built binary, Gatekeeper will block it with *"cannot be opened because the developer cannot be verified."* Right-click the file → **Open**, then click **Open** again. One-time only.
+>
+> **Windows:** SmartScreen may show *"Windows protected your PC."* Click **More info** → **Run anyway**. Same one-time bypass.
+
+### Option 2 — Docker (no Go or Node required)
 
 ```bash
 docker compose up --build
 ```
 
-Open http://localhost:8080 — the dashboard loads automatically.
+Open **http://localhost:8080**. The container generates secrets automatically. Data persists in `./data/` via the volume mount.
 
-## Quick start (local)
+---
 
-**Prerequisites:** Go 1.23+, Node 22+
+## Generating traffic with the simulator
 
-```bash
-# Build the React app and server binary
-make build
-
-# Start the server (generates data/secrets.json on first run)
-./bin/webhook-server
-```
-
-In a second terminal, start the simulator:
+The simulator registers mock webhook receiver servers, then continuously fires CloudEvents at the delivery service. Start it after the server is running:
 
 ```bash
-./bin/simulate --receivers 5 --failure-rate 0.3 --event-rate 2
+make simulate               # build bin/simulate (first time only)
+./bin/simulate
 ```
 
-The dashboard at http://localhost:8080 populates within seconds.
+The dashboard populates within seconds. Default: 5 receivers, 30% failure rate, 2 events/sec.
 
-## Development (React hot reload)
-
-```bash
-# Terminal 1: Go server
-./bin/webhook-server
-
-# Terminal 2: Vite dev server (proxies API calls to :8080)
-cd web && npm run dev
-```
-
-Open http://localhost:5173.
-
-## Testing
-
-```bash
-make test
-```
-
-## Simulation flags
+**Flags:**
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--receivers N` | 5 | Number of mock receiver HTTP servers |
 | `--failure-rate F` | 0.3 | Fraction of receivers that always return 500 |
-| `--event-rate R` | 2.0 | CloudEvents fired per second |
+| `--event-rate R` | 2.0 | Events per second to fire |
 | `--server URL` | http://localhost:8080 | Delivery service base URL |
 | `--secrets path` | data/secrets.json | Path to secrets file |
+
+To trigger circuit breaker activity: use `--failure-rate 0.7` and a low `--receivers 3`. Circuits will open within seconds.
+
+---
+
+## Development
+
+### React hot-reload + Go server
+
+Two terminals:
+
+```bash
+# Terminal 1 — Go server (restart manually when Go files change)
+./bin/webhook-server
+
+# Terminal 2 — Vite dev server with HMR at http://localhost:5173
+cd web && npm run dev
+```
+
+Vite proxies all API paths (`/webhooks`, `/events`, `/deliveries`, `/stream`, `/health`, `/config`) to the Go server at `:8080`. You edit React components and see changes instantly; the Go server handles all data. When you change Go code, `Ctrl+C` and re-run `./bin/webhook-server` (or use a file watcher like `air`).
+
+The React build does **not** need to be rebuilt during frontend dev — the Go server is only used for API calls, not asset serving, when Vite is running.
+
+### Building just the Go server (skip React rebuild)
+
+```bash
+go build -o bin/webhook-server ./cmd/server
+```
+
+Use this when you're only changing Go code and the frontend is already built.
+
+---
+
+## Testing
+
+### Run everything
+
+```bash
+make test
+```
+
+This runs `go test ./...` followed by `cd web && npm test`.
+
+### Go tests
+
+```bash
+go test ./...
+```
+
+All Go tests run against a real SQLite `:memory:` database. There are no mocks for the database layer — queries run against real SQL so constraint violations, transactions, and schema behavior are all exercised.
+
+**What's covered:**
+
+| Package | What the tests verify |
+|---|---|
+| `internal/db` | CRUD for webhooks, events, deliveries; idempotency (duplicate event ID → `ErrConflict`); delivery status transitions; `ClaimPending` CAS (two goroutines, one row → only one claims); `FlushHeld` limit; `ResetInFlight` sweep on startup |
+| `internal/worker` | Backoff scheduling (`NextAttemptAt`); delivery execution (mock HTTP server); circuit open/close transitions via `RecordFailure` / `RecordSuccess` |
+| `internal/api` | All REST endpoints via `httptest`: valid request → correct status + body; missing fields → 400; duplicate event → 409; oversized body → 413; unauthorized → 401; SSE stream produces events after a webhook action |
+| `internal/sse` | Non-blocking publish drops when channel full; unsubscribe removes client |
+| `internal/config` | Secrets auto-generation and round-trip loading |
+| `internal/crypto` | AES-GCM encrypt/decrypt round-trip; HMAC signature output |
+| `cmd/simulate` | Integration test: starts a real simulate run against a live test server, verifies events are ingested and webhooks are registered/deregistered cleanly |
+
+Run a single package verbosely:
+
+```bash
+go test -v ./internal/api/...
+go test -v ./internal/worker/...
+```
+
+Run a single test by name:
+
+```bash
+go test -v -run TestIngestEvent ./internal/api/...
+go test -v -run TestClaimPending ./internal/db/...
+```
+
+### Frontend tests
+
+```bash
+cd web && npm test
+```
+
+Uses Vitest + jsdom. Tests cover all five dashboard components (WebhookRegistry, EventFeed, DeliveryLog, EndpointHealth, VolumeChart) and the Zustand store's `applySSEEvent` reducer.
+
+Run in watch mode during development:
+
+```bash
+cd web && npm run test:watch    # re-runs affected tests on save
+```
+
+Run with coverage:
+
+```bash
+cd web && npm run coverage
+```
+
+---
 
 ## Architecture
 
 ```
-cmd/server        → HTTP server (chi router), graceful shutdown
-cmd/simulate      → Self-contained traffic generator
-internal/api      → REST + SSE handlers, /config endpoint
-internal/worker   → Delivery pool, retry scheduling, circuit probe
-internal/db       → SQLite stores (modernc.org/sqlite, pure Go, no CGO)
-internal/sse      → SSE broadcaster (sync.Map of buffered channels)
-internal/config   → Secrets management (auto-generates on first run)
-internal/crypto   → AES-256-GCM secret encryption
-web/              → React 18 + Vite + TypeScript dashboard (embedded in binary)
+cmd/server/         → wires dependencies, HTTP server, graceful shutdown
+cmd/simulate/       → standalone traffic generator (registers receivers, fires events)
+internal/api/       → REST handlers (chi router), SSE /stream, /config bootstrap endpoint
+internal/worker/    → delivery pool, retry backoff, circuit probe goroutine
+internal/db/        → SQLite repositories (modernc.org/sqlite — pure Go, no CGO)
+internal/sse/       → SSE broadcaster (sync.Map of buffered channels, non-blocking send)
+internal/config/    → secrets management (auto-generates data/secrets.json on first run)
+internal/crypto/    → AES-256-GCM encryption, HMAC-SHA256 request signing
+web/                → React 18 + Vite + TypeScript dashboard (embedded into Go binary)
 ```
 
-## Cross-platform binaries
+**Data flow:** Incoming CloudEvent → `POST /events` validates and persists → delivery rows created per registered webhook in the same transaction → worker pool polls pending rows → CAS claim → HTTP dispatch with HMAC signature → circuit breaker updates webhook status → SSE broadcast updates dashboard in real time.
 
-```bash
-make build-all
-# Outputs to dist/:
-#   webhook-server-linux-amd64
-#   webhook-server-linux-arm64
-#   webhook-server-darwin-amd64
-#   webhook-server-darwin-arm64
-#   webhook-server-windows-amd64.exe
-#   simulate-linux-amd64
-#   simulate-darwin-arm64
-#   simulate-windows-amd64.exe
-```
+**Circuit breaker** lives entirely in the database (no in-memory state). A per-webhook failure streak column transitions `active → degraded → circuit_open`. A background probe goroutine retries the oldest held delivery every 30 seconds; success closes the circuit and flushes held deliveries back to pending in batches of 100.
+
+**Frontend** fetches initial state via five React Query queries on mount, then stays live via a single `EventSource` connection. SSE events (`webhook_updated`, `event_ingested`, `delivery_updated`) are applied directly to the Zustand store; React Query handles reconnect re-hydration.
+
+---
 
 ## Configuration
 
-The server auto-generates `data/secrets.json` on first run containing a random AES-256 encryption key and API key. Override behaviour with environment variables:
+The server reads environment variables (and falls back to auto-generated `data/secrets.json` for key material):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | 8080 | HTTP listen port |
-| `DB_PATH` | data/webhooks.db | SQLite database path |
-| `WORKER_COUNT` | 10 | Delivery worker goroutines |
+| `PORT` | `8080` | HTTP listen port |
+| `DB_PATH` | `data/webhooks.db` | SQLite file path |
+| `WORKER_COUNT` | `10` | Delivery worker goroutines |
+
+Secrets (`API_KEY`, `WEBHOOK_ENCRYPTION_KEY`) are read from `data/secrets.json` if present. Set `--secrets` to point at a different path. The file is created automatically on first run.
+
+---
+
+## Cross-platform release builds
+
+```bash
+make build-all
+```
+
+Outputs to `dist/` — five server binaries and three simulate binaries covering Linux amd64/arm64, macOS amd64/arm64, and Windows amd64. CGO is disabled; `modernc.org/sqlite` is pure Go so cross-compilation works from any single platform without a C toolchain.

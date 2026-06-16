@@ -121,12 +121,18 @@ func startReceiver(fail bool) (*http.Server, int, error) {
 }
 
 func registerWebhook(ctx context.Context, baseURL, apiKey, url string) (string, error) {
-	body, _ := json.Marshal(map[string]any{
+	body, err := json.Marshal(map[string]any{
 		"url":               url,
 		"circuit_threshold": 3,
 	})
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/webhooks",
+	if err != nil {
+		return "", fmt.Errorf("marshal: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/webhooks",
 		bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("new request: %w", err)
+	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
@@ -147,7 +153,11 @@ func registerWebhook(ctx context.Context, baseURL, apiKey, url string) (string, 
 }
 
 func deleteWebhook(baseURL, apiKey, id string) {
-	req, _ := http.NewRequest(http.MethodDelete, baseURL+"/webhooks/"+id, nil)
+	req, err := http.NewRequest(http.MethodDelete, baseURL+"/webhooks/"+id, nil)
+	if err != nil {
+		log.Printf("delete webhook %s: build request: %v", id, err)
+		return
+	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -167,9 +177,15 @@ func fireEvent(ctx context.Context, baseURL, apiKey, id, evType string) error {
 		"datacontenttype": "application/json",
 		"data":            map[string]any{"seq": id},
 	}
-	body, _ := json.Marshal(payload)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/events",
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/events",
 		bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("new request: %w", err)
+	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)

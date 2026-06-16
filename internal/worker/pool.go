@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"sync"
 	"time"
 
 	"github.com/b2randon/webhook-delivery/internal/db"
@@ -21,6 +22,7 @@ type Pool struct {
 	pollInterval  time.Duration
 	probeInterval time.Duration
 	broadcaster   *sse.Broadcaster
+	wg            sync.WaitGroup
 }
 
 // NewPool returns a Pool ready to Start. workerN goroutines poll for pending deliveries.
@@ -39,16 +41,27 @@ func NewPool(stores *db.Stores, encKey []byte, workerN int) *Pool {
 func (p *Pool) SetBroadcaster(b *sse.Broadcaster) { p.broadcaster = b }
 
 // Start resets orphaned in-flight deliveries, then launches worker and probe goroutines.
-// Returns immediately; goroutines run until ctx is cancelled.
+// Returns immediately; goroutines run until ctx is cancelled. Call Wait to block until they exit.
 func (p *Pool) Start(ctx context.Context) {
 	if err := p.stores.Deliveries.ResetInFlight(ctx); err != nil {
 		slog.Error("startup recovery failed", "err", err)
 	}
 	for range p.workerN {
-		go supervise(ctx, func() { p.runWorker(ctx) })
+		p.wg.Add(1)
+		go func() {
+			defer p.wg.Done()
+			supervise(ctx, func() { p.runWorker(ctx) })
+		}()
 	}
-	go supervise(ctx, func() { p.runProbe(ctx) })
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
+		supervise(ctx, func() { p.runProbe(ctx) })
+	}()
 }
+
+// Wait blocks until all worker and probe goroutines have exited.
+func (p *Pool) Wait() { p.wg.Wait() }
 
 // supervise runs fn in a loop, catching panics. Exits when ctx is cancelled or fn returns normally.
 func supervise(ctx context.Context, fn func()) {
@@ -122,7 +135,7 @@ func (p *Pool) process(ctx context.Context, d models.Delivery) {
 	_, newStatus, err := p.stores.Webhooks.RecordFailure(ctx, d.WebhookID)
 	if err != nil {
 		slog.Error("record failure", "webhook_id", d.WebhookID, "err", err)
-		return
+		// Fall through to MarkFailed so the delivery doesn't stay in_flight.
 	}
 
 	if newStatus == models.StatusCircuitOpen {

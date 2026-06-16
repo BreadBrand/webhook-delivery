@@ -65,4 +65,5 @@ func main() {
 		slog.Error("listen", "err", err)
 		os.Exit(1)
 	}
+	pool.Wait()
 }

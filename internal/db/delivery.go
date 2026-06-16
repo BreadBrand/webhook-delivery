@@ -160,7 +160,7 @@ func (s *DeliveryStore) MarkHeld(ctx context.Context, id string) error {
 	return err
 }
 
-// FlushHeld moves all held deliveries for a webhook to pending (oldest first).
+// FlushHeld moves up to 100 held deliveries for a webhook to pending (oldest first).
 func (s *DeliveryStore) FlushHeld(ctx context.Context, webhookID string) error {
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
 	_, err := s.db.ExecContext(ctx, `
@@ -169,6 +169,7 @@ func (s *DeliveryStore) FlushHeld(ctx context.Context, webhookID string) error {
 			SELECT id FROM deliveries
 			WHERE webhook_id = ? AND status = 'held'
 			ORDER BY created_at ASC
+			LIMIT 100
 		)`, now, webhookID)
 	return err
 }

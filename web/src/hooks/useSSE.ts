@@ -22,9 +22,9 @@ export function useSSE() {
       applySSEEvent('delivery_updated', JSON.parse(e.data))
     })
     es.onerror = () => {
-      // On disconnect: invalidate all queries so they re-hydrate when stream reconnects.
+      // Invalidate cached data so queries re-hydrate when the stream reconnects.
+      // Do not close — EventSource auto-reconnects on its own.
       queryClient.invalidateQueries()
-      es.close()
     }
 
     return () => es.close()
