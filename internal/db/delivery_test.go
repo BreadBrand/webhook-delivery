@@ -59,7 +59,9 @@ func TestDeliveryCreateBatchHeldWhenCircuitOpen(t *testing.T) {
 	s.Webhooks.SetCircuitOpen(ctx, wh.ID)
 	wh.Status = models.StatusCircuitOpen
 
-	s.Deliveries.CreateBatch(ctx, ev.ID, []models.Webhook{wh})
+	if err := s.Deliveries.CreateBatch(ctx, ev.ID, []models.Webhook{wh}); err != nil {
+		t.Fatalf("CreateBatch: %v", err)
+	}
 
 	list, _ := s.Deliveries.List(ctx, 10)
 	if list[0].Status != models.DeliveryHeld {
@@ -278,5 +280,111 @@ func TestDeliveryHasActiveRedelivery(t *testing.T) {
 	}
 	if active == nil {
 		t.Error("expected active redelivery to be found")
+	}
+}
+
+func TestDeliveryCreateBatchIdempotent(t *testing.T) {
+	s := mustOpenDB(t)
+	ctx := context.Background()
+	wh, ev := seedWebhookAndEvent(t, s)
+
+	if err := s.Deliveries.CreateBatch(ctx, ev.ID, []models.Webhook{wh}); err != nil {
+		t.Fatalf("first CreateBatch: %v", err)
+	}
+	if err := s.Deliveries.CreateBatch(ctx, ev.ID, []models.Webhook{wh}); err != nil {
+		t.Fatalf("second CreateBatch: %v", err)
+	}
+
+	list, _ := s.Deliveries.List(ctx, 10)
+	if len(list) != 1 {
+		t.Errorf("expected exactly 1 delivery after duplicate CreateBatch, got %d", len(list))
+	}
+}
+
+func TestDeliveryClaimPending(t *testing.T) {
+	s := mustOpenDB(t)
+	ctx := context.Background()
+	wh, ev := seedWebhookAndEvent(t, s)
+	s.Deliveries.CreateBatch(ctx, ev.ID, []models.Webhook{wh})
+
+	// Nothing due in the past — empty result.
+	early, err := s.Deliveries.ClaimPending(ctx, time.Now().Add(-time.Hour), 10)
+	if err != nil {
+		t.Fatalf("ClaimPending: %v", err)
+	}
+	if len(early) != 0 {
+		t.Errorf("expected 0 pending before next_attempt_at, got %d", len(early))
+	}
+
+	// Due now — should return the delivery.
+	due, err := s.Deliveries.ClaimPending(ctx, time.Now().Add(time.Minute), 10)
+	if err != nil {
+		t.Fatalf("ClaimPending: %v", err)
+	}
+	if len(due) != 1 {
+		t.Errorf("expected 1 pending delivery, got %d", len(due))
+	}
+
+	// Limit is respected.
+	limited, _ := s.Deliveries.ClaimPending(ctx, time.Now().Add(time.Minute), 0)
+	if len(limited) != 0 {
+		t.Errorf("expected 0 with limit=0, got %d", len(limited))
+	}
+}
+
+func TestDeliveryOldestHeld(t *testing.T) {
+	s := mustOpenDB(t)
+	ctx := context.Background()
+	wh, _ := seedWebhookAndEvent(t, s)
+
+	// No held deliveries — returns nil.
+	got, err := s.Deliveries.OldestHeld(ctx, wh.ID)
+	if err != nil {
+		t.Fatalf("OldestHeld on empty: %v", err)
+	}
+	if got != nil {
+		t.Error("expected nil when no held deliveries")
+	}
+
+	// Create two held deliveries for different events.
+	s.Webhooks.SetCircuitOpen(ctx, wh.ID)
+	wh.Status = models.StatusCircuitOpen
+	for i := 0; i < 2; i++ {
+		ev := &models.Event{
+			ID: fmt.Sprintf("oldest-ev-%d", i), Type: "t", Source: "s",
+			Time: time.Now().UTC(), Data: json.RawMessage(`{}`),
+		}
+		s.Events.Create(ctx, ev)
+		s.Deliveries.CreateBatch(ctx, ev.ID, []models.Webhook{wh})
+	}
+
+	oldest, err := s.Deliveries.OldestHeld(ctx, wh.ID)
+	if err != nil {
+		t.Fatalf("OldestHeld: %v", err)
+	}
+	if oldest == nil {
+		t.Fatal("expected oldest held delivery, got nil")
+	}
+	if oldest.EventID != "oldest-ev-0" {
+		t.Errorf("OldestHeld returned event %q, want oldest-ev-0", oldest.EventID)
+	}
+}
+
+func TestDeliveryMarkHeld(t *testing.T) {
+	s := mustOpenDB(t)
+	ctx := context.Background()
+	wh, ev := seedWebhookAndEvent(t, s)
+	s.Deliveries.CreateBatch(ctx, ev.ID, []models.Webhook{wh})
+
+	list, _ := s.Deliveries.List(ctx, 10)
+	id := list[0].ID
+
+	if err := s.Deliveries.MarkHeld(ctx, id); err != nil {
+		t.Fatalf("MarkHeld: %v", err)
+	}
+
+	d, _ := s.Deliveries.Get(ctx, id)
+	if d.Status != models.DeliveryHeld {
+		t.Errorf("status = %q, want held", d.Status)
 	}
 }

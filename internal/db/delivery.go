@@ -34,7 +34,7 @@ func (s *DeliveryStore) CreateBatch(ctx context.Context, eventID string, webhook
 		_, err := tx.ExecContext(ctx, `
 			INSERT INTO deliveries (id, event_id, webhook_id, status, next_attempt_at)
 			VALUES (?, ?, ?, ?, ?)
-			ON CONFLICT DO NOTHING`,
+			ON CONFLICT(event_id, webhook_id) WHERE parent_delivery_id IS NULL DO NOTHING`,
 			uuid.New().String(), eventID, wh.ID, string(status), nextAt)
 		if err != nil {
 			return fmt.Errorf("insert delivery for webhook %s: %w", wh.ID, err)
