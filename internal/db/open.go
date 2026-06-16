@@ -26,6 +26,10 @@ func Open(path string) (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := os.Chmod(path, 0600); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("set db file permissions: %w", err)
+	}
 	return db, nil
 }
 
