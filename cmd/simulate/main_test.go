@@ -17,6 +17,7 @@ func TestStartReceiverFail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("want 500, got %d", resp.StatusCode)
 	}
@@ -33,6 +34,7 @@ func TestStartReceiverSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("want 200, got %d", resp.StatusCode)
 	}

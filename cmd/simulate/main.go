@@ -32,6 +32,10 @@ func main() {
 	secretsPath := flag.String("secrets", "data/secrets.json", "path to secrets.json")
 	flag.Parse()
 
+	if *eventRate <= 0 {
+		log.Fatal("--event-rate must be positive")
+	}
+
 	cfg, err := config.Load(*secretsPath)
 	if err != nil {
 		log.Fatalf("load config: %v", err)
@@ -43,9 +47,8 @@ func main() {
 	nFail := int(float64(*nReceivers) * *failureRate)
 
 	type entry struct {
-		srv  *http.Server
-		port int
-		id   string
+		srv *http.Server
+		id  string
 	}
 	var entries []entry
 
@@ -62,7 +65,7 @@ func main() {
 			srv.Close()
 			continue
 		}
-		entries = append(entries, entry{srv: srv, port: port, id: id})
+		entries = append(entries, entry{srv: srv, id: id})
 		log.Printf("registered %s → :%d (fail=%v)", id, port, fail)
 	}
 
