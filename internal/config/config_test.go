@@ -23,8 +23,11 @@ func TestLoadCreatesSecretsOnFirstRun(t *testing.T) {
 	if cfg.APIKey == "" {
 		t.Error("APIKey must not be empty")
 	}
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
 		t.Error("secrets.json was not created")
+	} else if info.Mode().Perm() != 0600 {
+		t.Errorf("secrets.json permissions = %o, want 0600", info.Mode().Perm())
 	}
 }
 
@@ -75,6 +78,12 @@ func TestLoadRejectsEmptyAPIKey(t *testing.T) {
 }
 
 func TestDefaultValues(t *testing.T) {
+	t.Setenv("PORT", "")
+	t.Setenv("WORKER_COUNT", "")
+	t.Setenv("DB_PATH", "")
+	t.Setenv("SIMULATE", "")
+	t.Setenv("LOG_FORMAT", "")
+
 	dir := t.TempDir()
 	cfg, _ := config.Load(filepath.Join(dir, "secrets.json"))
 

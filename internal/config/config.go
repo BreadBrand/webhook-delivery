@@ -4,7 +4,9 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -62,7 +64,7 @@ func loadOrCreate(path string) (secretsFile, error) {
 		}
 		return s, nil
 	}
-	if !os.IsNotExist(err) {
+	if !errors.Is(err, fs.ErrNotExist) {
 		return secretsFile{}, err
 	}
 
@@ -73,7 +75,10 @@ func loadOrCreate(path string) (secretsFile, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return secretsFile{}, err
 	}
-	out, _ := json.MarshalIndent(s, "", "  ")
+	out, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return secretsFile{}, fmt.Errorf("marshal secrets: %w", err)
+	}
 	if err := os.WriteFile(path, out, 0600); err != nil {
 		return secretsFile{}, err
 	}
@@ -82,7 +87,10 @@ func loadOrCreate(path string) (secretsFile, error) {
 
 func randomBase64(n int) string {
 	b := make([]byte, n)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand.Read never returns an error on Go 1.20+, but guard anyway.
+		panic(fmt.Sprintf("crypto/rand unavailable: %v", err))
+	}
 	return base64.StdEncoding.EncodeToString(b)
 }
 
