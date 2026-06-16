@@ -4,6 +4,11 @@ A self-contained webhook delivery system with circuit breaker, retry scheduling,
 
 ---
 
+## Design thoughts
+I built a design doc and a technical requirements doc those can be found at docs/specs/ some of my design choices I made just to try a new piece of software I haven't used before like zustand and others I made a decision to use because I'm confortable with it like React and Go. I want to use multi-client keys with webhook package signing to similulate a more real world choice. And I though it would be nice to add some interactivability to the dashboard. However the simulator just simulates a percentage failure rate and no latency so I would have liked to add that to the simulation so you could see the latency reporting but I ran out of time. 
+
+I made the design docs in concert with claude code using a skill I developed called feature-spec. This skill takes a prompt from me about the new feature or project and then asks me questions to narrow the scope and figure out what are table stakes and what is out of scope. Then we collaborate on what could be potential edge cases and missed features and we iterate on the document. Once that is done we use the document to make the technical requirements where I make desicions about what technology I'll use and what design patterns will help with future development and expansion. Then we talk about engineering guidlines and make a guidline doc for the agents that will coding the work. Once that is done the work gets split into phases so the output token limit doesn't get hit and we code in TDD way so that the agents can catch bugs as we develope and I run manual tests accross the feature prompt to fix things. I did pull request reviews on all the code written and made sure I could understand it before pushing.
+
 ## Running it
 
 ### Option 1 — Pre-built binary (no Go or Node required)
